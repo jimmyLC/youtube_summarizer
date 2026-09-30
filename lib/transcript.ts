@@ -2,6 +2,10 @@ import { SupadataError } from "@supadata/js";
 import { getSupadataClient } from "./supadata";
 import { fetchTranscript as fetchYoutubeCaptions } from "youtube-transcript-plus";
 import { transcribeWithGroq } from "./groqTranscript";
+import * as OpenCC from "opencc-js";
+
+// Simplified -> Traditional (Taiwan standard, with phrase conversion)
+const toTraditional = OpenCC.Converter({ from: "cn", to: "twp" });
 
 /**
  * Transcript segment with timestamp information
@@ -82,6 +86,23 @@ async function withRetry<T>(
  * @throws TranscriptError if all methods fail or Supadata is not configured
  */
 export async function fetchTranscript(
+  videoUrl: string,
+  userId: string
+): Promise<TranscriptResult> {
+  const result = await fetchTranscriptRaw(videoUrl, userId);
+
+  // Chinese transcripts (Whisper and some captions) may contain Simplified characters
+  if (!result.lang.toLowerCase().startsWith("zh")) return result;
+
+  return {
+    ...result,
+    content: Array.isArray(result.content)
+      ? result.content.map((s) => ({ ...s, text: toTraditional(s.text) }))
+      : toTraditional(result.content),
+  };
+}
+
+async function fetchTranscriptRaw(
   videoUrl: string,
   userId: string
 ): Promise<TranscriptResult> {
