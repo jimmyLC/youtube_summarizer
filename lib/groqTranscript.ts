@@ -15,6 +15,31 @@ const CHUNK_SECONDS = 600; // 10 min chunks at 32kbps mono keep each file ~2.4MB
 const TRADITIONAL_CHINESE_PROMPT = "以下是繁體中文的逐字稿。";
 
 /**
+ * Global limit on simultaneous audio downloads/transcriptions, so a public
+ * deployment does not hammer YouTube from one IP or exhaust the machine.
+ */
+const MAX_CONCURRENT_JOBS = Number(process.env.MAX_CONCURRENT_TRANSCRIPTIONS || 2);
+let activeJobs = 0;
+const waiters: Array<() => void> = [];
+
+async function acquireSlot(): Promise<void> {
+  if (activeJobs < MAX_CONCURRENT_JOBS) {
+    activeJobs++;
+    return;
+  }
+  await new Promise<void>((resolve) => waiters.push(resolve));
+}
+
+function releaseSlot(): void {
+  const next = waiters.shift();
+  if (next) {
+    next(); // hand the slot straight to the next waiter
+  } else {
+    activeJobs--;
+  }
+}
+
+/**
  * Per-user client cache
  */
 const groqClients: Map<string, OpenAI> = new Map();
@@ -105,6 +130,18 @@ export async function transcribeWithGroq(
   const client = await getGroqClient(userId);
   if (!client) return null;
 
+  await acquireSlot();
+  try {
+    return await transcribeWithClient(client, videoUrl);
+  } finally {
+    releaseSlot();
+  }
+}
+
+async function transcribeWithClient(
+  client: OpenAI,
+  videoUrl: string
+): Promise<{ segments: TranscriptSegment[]; lang: string }> {
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ytsum-"));
   try {
     const source = path.join(dir, "source.%(ext)s");
