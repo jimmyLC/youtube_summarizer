@@ -18,7 +18,7 @@ export default function Home() {
   const { isAuthenticated, isLoading: authLoading, user } = useAuth()
   const [url, setUrl] = useState("")
   const [aiModel, setAiModel] = useState("")
-  const [language, setLanguage] = useState<OutputLanguage>("en")
+  const [language, setLanguage] = useState<OutputLanguage>("zh-TW")
   const [urlError, setUrlError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isUrlValid, setIsUrlValid] = useState(false)

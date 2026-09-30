@@ -73,9 +73,10 @@ export async function GET(req: NextRequest) {
 /**
  * Supported output languages for summaries
  */
-type OutputLanguage = "de" | "en" | "fr" | "es" | "it";
+type OutputLanguage = "zh-TW" | "de" | "en" | "fr" | "es" | "it";
 
 const LANGUAGE_NAMES: Record<OutputLanguage, string> = {
+  "zh-TW": "Traditional Chinese (繁體中文, Taiwan usage; never use Simplified Chinese)",
   de: "German",
   en: "English",
   fr: "French",
@@ -128,7 +129,7 @@ export async function POST(req: NextRequest) {
   (async () => {
     try {
       const body = await req.json();
-      const { url, detailLevel = 3, language = "en" } = body as {
+      const { url, detailLevel = 3, language = "zh-TW" } = body as {
         url: string;
         detailLevel?: number;
         language?: OutputLanguage;

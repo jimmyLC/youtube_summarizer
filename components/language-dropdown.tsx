@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Check, ChevronDown, Globe } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-export type OutputLanguage = "de" | "en" | "fr" | "es" | "it"
+export type OutputLanguage = "zh-TW" | "de" | "en" | "fr" | "es" | "it"
 
 interface LanguageOption {
   code: OutputLanguage
@@ -15,6 +15,7 @@ interface LanguageOption {
 }
 
 const LANGUAGES: LanguageOption[] = [
+  { code: "zh-TW", name: "Traditional Chinese", flag: "🇹🇼", nativeName: "繁體中文" },
   { code: "de", name: "German", flag: "🇩🇪", nativeName: "Deutsch" },
   { code: "en", name: "English", flag: "🇬🇧", nativeName: "English" },
   { code: "fr", name: "French", flag: "🇫🇷", nativeName: "Français" },
@@ -36,7 +37,7 @@ export function LanguageDropdown({
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const selectedLanguage = LANGUAGES.find((l) => l.code === value) || LANGUAGES[1]
+  const selectedLanguage = LANGUAGES.find((l) => l.code === value) || LANGUAGES[0]
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -154,12 +155,14 @@ export function LanguageDropdown({
  * Get the default language based on browser settings
  */
 export function getDefaultLanguage(): OutputLanguage {
-  if (typeof navigator === "undefined") return "en"
+  // Traditional Chinese is the default; only switch if the browser prefers another supported language
+  if (typeof navigator === "undefined") return "zh-TW"
 
   const browserLang = navigator.language.toLowerCase().slice(0, 2)
+  if (browserLang === "zh") return "zh-TW"
   const supportedLang = LANGUAGES.find((l) => l.code === browserLang)
 
-  return supportedLang?.code || "en"
+  return supportedLang?.code || "zh-TW"
 }
 
 /**

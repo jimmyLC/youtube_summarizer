@@ -83,7 +83,7 @@ export default function SummaryPage({ params }: PageProps) {
 
   const searchParams = useSearchParams()
   const detailLevel = parseInt(searchParams.get("detail") || "3", 10)
-  const language = searchParams.get("lang") || "en"
+  const language = searchParams.get("lang") || "zh-TW"
   const { videoUrl } = use(params)
 
   // Parse the summary content into structured format

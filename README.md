@@ -12,7 +12,7 @@ Transform lengthy YouTube videos into structured, digestible summaries. YouTube 
 ## Features
 
 - **Smart Chapter Detection** - Automatically identifies chapters and topics with precise timestamps
-- **Multi-Language Support** - Generate summaries in English, German, French, Spanish, or Italian
+- **Multi-Language Support** - Generate summaries in Traditional Chinese (繁體中文, default), English, German, French, Spanish, or Italian
 - **Clickable Timestamps** - Jump directly to any video position from the summary
 - **Visual Chapter Timeline** - See video structure at a glance with an interactive timeline
 - **Full Transcript View** - Access the complete transcript with clickable timestamps
