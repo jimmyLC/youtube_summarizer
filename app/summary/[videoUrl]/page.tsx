@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState, useMemo, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { use } from "react"
 import ReactMarkdown from "react-markdown"
@@ -92,7 +92,14 @@ export default function SummaryPage({ params }: PageProps) {
     return parseSummaryContent(summary.content)
   }, [summary?.content])
 
+  // Guards against the request being sent twice (React StrictMode re-runs effects in dev)
+  const requestedKey = useRef<string | null>(null)
+
   useEffect(() => {
+    const requestKey = `${videoUrl}|${detailLevel}|${language}`
+    if (requestedKey.current === requestKey) return
+    requestedKey.current = requestKey
+
     const fetchSummary = async () => {
       try {
         setLoading(true)

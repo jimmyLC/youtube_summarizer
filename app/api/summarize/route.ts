@@ -176,23 +176,23 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      if (existingSummary) {
+      const writeCachedSummary = async (existing: NonNullable<typeof existingSummary>) => {
         await writeProgress({
           type: "complete",
           summary: {
-            id: existingSummary.id,
-            videoId: existingSummary.videoId,
-            title: existingSummary.title,
-            content: existingSummary.content,
-            hasTimestamps: existingSummary.hasTimestamps,
-            topics: existingSummary.topics.map((t) => ({
+            id: existing.id,
+            videoId: existing.videoId,
+            title: existing.title,
+            content: existing.content,
+            hasTimestamps: existing.hasTimestamps,
+            topics: existing.topics.map((t) => ({
               id: t.id,
               title: t.title,
               startMs: t.startMs,
               endMs: t.endMs,
               order: t.order,
             })),
-            transcriptSegments: existingSummary.transcriptSegments.map((s) => ({
+            transcriptSegments: existing.transcriptSegments.map((s) => ({
               id: s.id,
               text: s.text,
               offset: s.offset,
@@ -204,6 +204,10 @@ export async function POST(req: NextRequest) {
           },
           status: "completed",
         });
+      };
+
+      if (existingSummary) {
+        await writeCachedSummary(existingSummary);
         await writer.close();
         return;
       }
@@ -278,7 +282,7 @@ export async function POST(req: NextRequest) {
             transcriptText,
             summary,
             videoDurationMs,
-            { userId }
+            { userId, languageName: LANGUAGE_NAMES[language as OutputLanguage] || "English" }
           );
           topics = topicResult.topics;
 
@@ -306,8 +310,12 @@ export async function POST(req: NextRequest) {
           }))
         : [];
 
-      // Save to database
-      const savedSummary = await prisma.summary.create({
+      // Save to database. A concurrent request for the same video (e.g. React
+      // StrictMode double-invoking the page effect in dev) may have saved it first;
+      // in that case return the saved copy instead of failing.
+      let savedSummary;
+      try {
+        savedSummary = await prisma.summary.create({
         data: {
           videoId,
           userId,
@@ -336,6 +344,23 @@ export async function POST(req: NextRequest) {
           },
         },
       });
+      } catch (saveError) {
+        if ((saveError as { code?: string }).code === "P2002") {
+          const concurrent = await prisma.summary.findUnique({
+            where: { videoId_userId: { videoId, userId } },
+            include: {
+              topics: { orderBy: { order: "asc" } },
+              transcriptSegments: { orderBy: { order: "asc" } },
+            },
+          });
+          if (concurrent) {
+            await writeCachedSummary(concurrent);
+            await writer.close();
+            return;
+          }
+        }
+        throw saveError;
+      }
 
       // Return complete result
       await writeProgress({
@@ -590,7 +615,7 @@ ${chapterScopeInstruction}
 function extractTitleFromSummary(summary: string): string | null {
   // Look for **Title**: or # Title patterns
   const titlePatterns = [
-    /\*\*Title\*\*:\s*(.+)/i,
+    /\*\*(?:Title|標題)\*\*\s*[:：]\s*(.+)/i,
     /^#\s+(.+)/m,
     /^Title:\s*(.+)/mi,
   ];

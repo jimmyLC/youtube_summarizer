@@ -18,6 +18,7 @@ export interface TopicExtractionOptions {
   minTopics?: number;
   maxTopics?: number;
   userId?: string;
+  languageName?: string;
 }
 
 /**
@@ -53,7 +54,7 @@ export async function extractTopics(
   videoDurationMs: number,
   options: TopicExtractionOptions = {}
 ): Promise<TopicExtractionResult> {
-  const { preferredModel, minTopics = 5, maxTopics = 15, userId } = options;
+  const { preferredModel, minTopics = 5, maxTopics = 15, userId, languageName = "English" } = options;
 
   if (!userId) {
     throw new Error("userId is required for topic extraction");
@@ -66,7 +67,8 @@ export async function extractTopics(
     summary,
     videoDurationMs,
     minTopics,
-    maxTopics
+    maxTopics,
+    languageName
   );
 
   const llmResult = await callWithFallback(prompt, {
@@ -104,7 +106,8 @@ function buildTopicExtractionPrompt(
   summary: string,
   videoDurationMs: number,
   minTopics: number,
-  maxTopics: number
+  maxTopics: number,
+  languageName: string
 ): string {
   const videoDurationFormatted = formatDuration(videoDurationMs);
 
@@ -124,7 +127,7 @@ INSTRUCTIONS:
 3. Topics must be CONTIGUOUS - each topic's endMs must equal the next topic's startMs
 4. The first topic must start at 0ms
 5. The last topic must end at exactly ${videoDurationMs}ms
-6. Topic titles should be concise but descriptive (5-10 words)
+6. Topic titles should be concise but descriptive (5-10 words), written in ${languageName}
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
