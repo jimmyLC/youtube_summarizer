@@ -6,23 +6,23 @@ import bcrypt from "bcrypt"
 
 /**
  * Password validation rules:
- * - Minimum 10 characters
+ * - Minimum 8 characters
  * - At least 1 uppercase letter
+ * - At least 1 lowercase letter
  * - At least 1 number
- * - At least 1 special character
  */
 export function validatePassword(password: string): { valid: boolean; error?: string } {
-  if (password.length < 10) {
-    return { valid: false, error: "Password must be at least 10 characters long" }
+  if (password.length < 8) {
+    return { valid: false, error: "Password must be at least 8 characters long" }
   }
   if (!/[A-Z]/.test(password)) {
     return { valid: false, error: "Password must contain at least one uppercase letter" }
   }
+  if (!/[a-z]/.test(password)) {
+    return { valid: false, error: "Password must contain at least one lowercase letter" }
+  }
   if (!/[0-9]/.test(password)) {
     return { valid: false, error: "Password must contain at least one number" }
-  }
-  if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
-    return { valid: false, error: "Password must contain at least one special character" }
   }
   return { valid: true }
 }
@@ -34,7 +34,7 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-    minPasswordLength: 10,
+    minPasswordLength: 8,
     maxPasswordLength: 128,
     password: {
       hash: async (password) => {

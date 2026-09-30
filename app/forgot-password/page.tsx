@@ -116,20 +116,20 @@ export default function ForgotPasswordPage() {
     }
 
     // Client-side password validation
-    if (newPassword.length < 10) {
-      setError("Password must be at least 10 characters long")
+    if (newPassword.length < 8) {
+      setError("Password must be at least 8 characters long")
       return
     }
     if (!/[A-Z]/.test(newPassword)) {
       setError("Password must contain at least one uppercase letter")
       return
     }
-    if (!/[0-9]/.test(newPassword)) {
-      setError("Password must contain at least one number")
+    if (!/[a-z]/.test(newPassword)) {
+      setError("Password must contain at least one lowercase letter")
       return
     }
-    if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(newPassword)) {
-      setError("Password must contain at least one special character")
+    if (!/[0-9]/.test(newPassword)) {
+      setError("Password must contain at least one number")
       return
     }
 
@@ -403,7 +403,7 @@ export default function ForgotPasswordPage() {
                         />
                       </div>
                       <p className="text-xs text-slate-400">
-                        Min 10 characters, 1 uppercase, 1 number, 1 special character
+                        Min 8 characters, 1 uppercase, 1 lowercase, 1 number
                       </p>
                     </div>
 
