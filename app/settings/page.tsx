@@ -26,7 +26,7 @@ interface ApiKeyState {
   deleting: boolean
 }
 
-const API_KEY_SERVICES = ["supadata", "zai"] as const
+const API_KEY_SERVICES = ["supadata", "zai", "deepseek"] as const
 type ApiKeyService = typeof API_KEY_SERVICES[number]
 
 export default function SettingsPage() {
@@ -228,6 +228,11 @@ export default function SettingsPage() {
         description: "GLM-4.7 model - Coding Plan or API Credit Mode",
         url: "https://z.ai/subscribe?ic=D7NHC27OHD",
         urlLabel: "z.ai"
+      },
+      deepseek: {
+        description: "DeepSeek V3 model - low-cost, strong Chinese summaries",
+        url: "https://platform.deepseek.com/api_keys",
+        urlLabel: "platform.deepseek.com"
       }
     }
     return info[service]

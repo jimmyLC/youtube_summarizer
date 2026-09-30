@@ -25,6 +25,8 @@ export default function SetupWizard() {
 
   // Step 2: Z.AI API key state
   const [zaiKey, setZaiKey] = useState("")
+  const [llmProvider, setLlmProvider] = useState<"zai" | "deepseek">("deepseek")
+  const llmLabel = llmProvider === "deepseek" ? "DeepSeek" : "Z.AI"
 
   const [step2Saving, setStep2Saving] = useState(false)
   const [step2Error, setStep2Error] = useState("")
@@ -134,7 +136,7 @@ export default function SetupWizard() {
     setStep2Error("")
 
     if (!zaiKey.trim()) {
-      setStep2Error("Please enter your Z.AI API key")
+      setStep2Error(`Please enter your ${llmLabel} API key`)
       setStep2Saving(false)
       return
     }
@@ -147,11 +149,11 @@ export default function SetupWizard() {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ service: "zai", apiKey: zaiKey }),
+        body: JSON.stringify({ service: llmProvider, apiKey: zaiKey }),
       })
       const data = await response.json()
       if (!data.success && !data.skipped) {
-        setStep2Error("Failed to save Z.AI API key")
+        setStep2Error(`Failed to save ${llmLabel} API key`)
         setStep2Saving(false)
         return
       }
@@ -183,7 +185,7 @@ export default function SetupWizard() {
 
   const steps = [
     { number: 1, title: "Supadata API" },
-    { number: 2, title: "Z.AI API" },
+    { number: 2, title: "AI API" },
   ]
 
   // Show loading state while checking auth/setup status
@@ -348,24 +350,37 @@ export default function SetupWizard() {
                   <>
                     <div className="flex items-center space-x-2 text-lg font-medium text-slate-900">
                       <Key className="h-5 w-5 text-accent-primary" />
-                      <span>Step 2: Z.AI API Key</span>
+                      <span>Step 2: {llmLabel} API Key</span>
                     </div>
 
                     <p className="text-sm text-slate-500">
-                      Z.AI provides the GLM-4.7 model for generating high-quality summaries.
+                      Choose the AI provider used to generate summaries.
                     </p>
+
+                    <div className="flex gap-2">
+                      {(["deepseek", "zai"] as const).map((p) => (
+                        <Button
+                          key={p}
+                          type="button"
+                          variant={llmProvider === p ? "default" : "outline"}
+                          onClick={() => setLlmProvider(p)}
+                        >
+                          {p === "deepseek" ? "DeepSeek" : "Z.AI (GLM-4.7)"}
+                        </Button>
+                      ))}
+                    </div>
 
                     {/* Z.AI API Key Input */}
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">Z.AI API Key</label>
+                        <label className="text-sm font-medium text-slate-700">{llmLabel} API Key</label>
                         <Input
                           type="password"
                           value={zaiKey}
                           onChange={(e) => {
                             setZaiKey(e.target.value)
                           }}
-                          placeholder="Enter your Z.AI API key"
+                          placeholder={`Enter your ${llmLabel} API key`}
                         />
                       </div>
 
@@ -390,7 +405,7 @@ export default function SetupWizard() {
                       <div className="flex flex-wrap gap-2">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-violet-100 text-violet-700">
                           <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
-                          Z.AI configured
+                          {llmLabel} configured
                         </span>
                       </div>
                     )}

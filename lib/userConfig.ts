@@ -119,6 +119,7 @@ export async function getUserApiKeys(
   const result: Record<string, boolean> = {
     supadata: false,
     zai: false,
+    deepseek: false,
   };
 
   for (const key of apiKeys) {
@@ -146,6 +147,7 @@ export async function getUserApiKeysWithMasked(
   const result: Record<string, { configured: boolean; masked: string | null }> = {
     supadata: { configured: false, masked: null },
     zai: { configured: false, masked: null },
+    deepseek: { configured: false, masked: null },
   };
 
   for (const apiKey of apiKeys) {

@@ -18,13 +18,14 @@ export async function GET(request: NextRequest) {
     const userKeys = await getUserApiKeys(auth.userId);
 
     const hasAnyLlmProvider = !!(
-      userKeys.zai || userKeys.openrouter || userKeys.gemini || userKeys.groq || userKeys.openai
+      userKeys.zai || userKeys.deepseek || userKeys.openrouter || userKeys.gemini || userKeys.groq || userKeys.openai
     );
 
     return NextResponse.json({
       needsSetup: !hasAnyLlmProvider,
       providers: {
         zai: userKeys.zai,
+        deepseek: userKeys.deepseek,
         openrouter: userKeys.openrouter,
         gemini: userKeys.gemini,
         groq: userKeys.groq,
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
       needsSetup: true,
       providers: {
         zai: false,
+        deepseek: false,
         openrouter: false,
         gemini: false,
         groq: false,

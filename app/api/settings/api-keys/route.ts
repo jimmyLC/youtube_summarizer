@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/apiAuth";
 import { getUserApiKeysWithMasked, deleteUserApiKey } from "@/lib/userConfig";
 import { clearGlmClient } from "@/lib/glm";
+import { clearDeepseekClient } from "@/lib/deepseek";
 
 const SERVICE_NAMES: Record<string, string> = {
   supadata: "Supadata",
   zai: "Z.AI (GLM-4.7)",
+  deepseek: "DeepSeek",
 };
 
-const VALID_SERVICES = ["supadata", "zai"];
+const VALID_SERVICES = ["supadata", "zai", "deepseek"];
 
 /**
  * GET - Retrieve status of all API keys (masked) for the user
@@ -76,6 +78,8 @@ export async function DELETE(request: NextRequest) {
     // Clear cached clients so they pick up the removal
     if (service === "zai") {
       clearGlmClient(auth.userId);
+    } else if (service === "deepseek") {
+      clearDeepseekClient(auth.userId);
     }
 
     return NextResponse.json({

@@ -93,6 +93,39 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (service === "deepseek") {
+      // Test DeepSeek API key by making a simple completion request
+      const client = new OpenAI({
+        apiKey: apiKey,
+        baseURL: "https://api.deepseek.com",
+      });
+
+      try {
+        await client.chat.completions.create({
+          model: "deepseek-chat",
+          messages: [{ role: "user", content: "Hello" }],
+          max_tokens: 5,
+        });
+
+        return NextResponse.json({
+          success: true,
+          message: "DeepSeek API key is valid",
+        });
+      } catch (apiError: unknown) {
+        const errorMessage = apiError instanceof Error ? apiError.message : "Unknown error";
+        if (errorMessage.includes("401") || errorMessage.includes("Authentication") || errorMessage.includes("invalid")) {
+          return NextResponse.json(
+            { success: false, error: "Invalid API key" },
+            { status: 401 }
+          );
+        }
+        return NextResponse.json(
+          { success: false, error: `API test failed: ${errorMessage}` },
+          { status: 400 }
+        );
+      }
+    }
+
     return NextResponse.json(
       { error: `Unsupported service: ${service}` },
       { status: 400 }

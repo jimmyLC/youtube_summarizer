@@ -4,22 +4,24 @@ import {
   getGlmPaasClient,
   isGlmConfigured,
 } from "./glm";
+import { getDeepseekClient, isDeepseekConfigured } from "./deepseek";
 
 /**
  * Model identifiers for the fallback chain
  */
-export type ModelId = "glm-4.7";
+export type ModelId = "glm-4.7" | "deepseek-chat";
 
 /**
  * Provider group type
  */
-export type ProviderGroup = "zai";
+export type ProviderGroup = "zai" | "deepseek";
 
 /**
  * Model to provider group mapping
  */
 const MODEL_GROUPS: Record<ModelId, ProviderGroup> = {
   "glm-4.7": "zai",
+  "deepseek-chat": "deepseek",
 };
 
 /**
@@ -60,9 +62,11 @@ export interface LlmCallOptions {
  */
 export async function getAvailableModels(userId: string): Promise<ModelInfo[]> {
   const glmAvailable = await isGlmConfigured(userId);
+  const deepseekAvailable = await isDeepseekConfigured(userId);
 
   return [
     { id: "glm-4.7", name: "GLM-4.7", available: glmAvailable, group: "zai" as ProviderGroup },
+    { id: "deepseek-chat", name: "DeepSeek V3", available: deepseekAvailable, group: "deepseek" as ProviderGroup },
   ];
 }
 
@@ -86,19 +90,13 @@ export async function callWithFallback(
 
   const errors: { model: ModelId; error: string }[] = [];
 
-  // Build the model order - only GLM-4.7 available
-  const preferredModel = options.preferredModel || "glm-4.7";
-  const group = MODEL_GROUPS[preferredModel];
-
-  // Get all models in the same group for fallback
-  const groupModels = Object.entries(MODEL_GROUPS)
-    .filter(([, g]) => g === group)
-    .map(([id]) => id as ModelId);
-
-  // Build order: preferred first, then other models in same group
+  // Build the model order: preferred first, then every other model as fallback.
+  // Models whose API key is not configured return null and are skipped.
+  const allModels = Object.keys(MODEL_GROUPS) as ModelId[];
+  const preferredModel = options.preferredModel || allModels[0];
   const modelOrder: ModelId[] = [
     preferredModel,
-    ...groupModels.filter((m) => m !== preferredModel),
+    ...allModels.filter((m) => m !== preferredModel),
   ];
 
   // Try each model in order
@@ -141,6 +139,8 @@ async function callModel(
   switch (modelId) {
     case "glm-4.7":
       return callGlm(prompt, options);
+    case "deepseek-chat":
+      return callDeepseek(prompt, options);
     default:
       return null;
   }
@@ -210,6 +210,41 @@ async function callGlm(
   return {
     response: content,
     modelUsed: "glm-4.7",
+    tokensUsed: completion.usage?.total_tokens,
+  };
+}
+
+/**
+ * Call DeepSeek (OpenAI-compatible API)
+ */
+async function callDeepseek(
+  prompt: string,
+  options: { maxTokens: number; temperature: number; systemPrompt?: string; userId: string }
+): Promise<LlmResponse | null> {
+  const client = await getDeepseekClient(options.userId);
+  if (!client) return null;
+
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+  if (options.systemPrompt) {
+    messages.push({ role: "system", content: options.systemPrompt });
+  }
+  messages.push({ role: "user", content: prompt });
+
+  const completion = await client.chat.completions.create({
+    model: "deepseek-chat",
+    messages,
+    max_tokens: options.maxTokens,
+    temperature: options.temperature,
+  });
+
+  const content = completion.choices[0]?.message?.content;
+  if (!content) {
+    throw new Error("No content in DeepSeek response");
+  }
+
+  return {
+    response: content,
+    modelUsed: "deepseek-chat",
     tokensUsed: completion.usage?.total_tokens,
   };
 }

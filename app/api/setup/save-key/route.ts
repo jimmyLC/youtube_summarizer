@@ -3,10 +3,11 @@ import { hasAppSecret } from "@/lib/appConfig";
 import { authenticateRequest } from "@/lib/apiAuth";
 import { setUserApiKey } from "@/lib/userConfig";
 import { clearGlmClient } from "@/lib/glm";
+import { clearDeepseekClient } from "@/lib/deepseek";
 import { clearSupadataClient } from "@/lib/supadata";
 
 // Valid service names
-const VALID_SERVICES = ["supadata", "zai"];
+const VALID_SERVICES = ["supadata", "zai", "deepseek"];
 
 export async function POST(request: NextRequest) {
   try {
@@ -58,6 +59,8 @@ export async function POST(request: NextRequest) {
       clearSupadataClient(auth.userId);
     } else if (service === "zai") {
       clearGlmClient(auth.userId);
+    } else if (service === "deepseek") {
+      clearDeepseekClient(auth.userId);
     }
 
     return NextResponse.json({

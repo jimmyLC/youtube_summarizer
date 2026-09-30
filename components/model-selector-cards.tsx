@@ -18,24 +18,31 @@ interface ModelInfo {
   group?: string
 }
 
-type ProviderGroup = "zai"
+type ProviderGroup = "zai" | "deepseek"
 
 const GROUP_LABELS: Record<ProviderGroup, string> = {
   zai: "Z.AI",
+  deepseek: "DeepSeek",
 }
 
 const MODEL_DESCRIPTIONS: Record<string, string> = {
   "glm-4.7": "Z.AI's powerful model for high-quality summaries",
+  "deepseek-chat": "DeepSeek V3, low-cost with strong Chinese output",
 }
 
 const MODEL_ICONS: Record<string, typeof Bot> = {
   "glm-4.7": Brain,
+  "deepseek-chat": Brain,
 }
 
 const MODEL_COLORS: Record<string, { gradient: string; shadow: string }> = {
   "glm-4.7": {
     gradient: "from-violet-500 to-purple-500",
     shadow: "shadow-violet-200",
+  },
+  "deepseek-chat": {
+    gradient: "from-blue-500 to-cyan-500",
+    shadow: "shadow-blue-200",
   },
 }
 
@@ -87,6 +94,7 @@ export function ModelSelectorCards({
   const groupedModels = useMemo(() => {
     const groups: Record<ProviderGroup, ModelInfo[]> = {
       zai: [],
+      deepseek: [],
     }
 
     for (const model of models) {
