@@ -1,5 +1,7 @@
 import { SupadataError } from "@supadata/js";
 import { getSupadataClient } from "./supadata";
+import { fetchTranscript as fetchYoutubeCaptions } from "youtube-transcript-plus";
+import { transcribeWithGroq } from "./groqTranscript";
 
 /**
  * Transcript segment with timestamp information
@@ -19,6 +21,7 @@ export interface TranscriptResult {
   lang: string;
   availableLangs: string[];
   hasTimestamps: boolean;
+  source?: "captions" | "groq" | "supadata";
 }
 
 /**
@@ -82,12 +85,57 @@ export async function fetchTranscript(
   videoUrl: string,
   userId: string
 ): Promise<TranscriptResult> {
+  // 1. Free: existing YouTube captions (no API key needed)
+  try {
+    const captions = await fetchYoutubeCaptions(videoUrl);
+    if (captions.length > 0) {
+      const lang = captions[0].lang || "unknown";
+      return {
+        content: captions.map((c) => ({
+          text: c.text,
+          offset: Math.round(c.offset * 1000),
+          duration: Math.round(c.duration * 1000),
+          lang,
+        })),
+        lang,
+        availableLangs: [lang],
+        hasTimestamps: true,
+        source: "captions",
+      };
+    }
+  } catch (captionError) {
+    console.warn(
+      "YouTube captions unavailable, trying next source:",
+      captionError instanceof Error ? captionError.message : "Unknown error"
+    );
+  }
+
+  // 2. Groq Whisper speech-to-text (video has no usable captions)
+  try {
+    const groqResult = await transcribeWithGroq(videoUrl, userId);
+    if (groqResult && groqResult.segments.length > 0) {
+      return {
+        content: groqResult.segments,
+        lang: groqResult.lang,
+        availableLangs: [groqResult.lang],
+        hasTimestamps: true,
+        source: "groq",
+      };
+    }
+  } catch (groqError) {
+    console.warn(
+      "Groq transcription failed, trying next source:",
+      groqError instanceof Error ? groqError.message : "Unknown error"
+    );
+  }
+
+  // 3. Supadata (optional, if configured)
   const client = await getSupadataClient(userId);
 
   if (!client) {
     throw new TranscriptError(
-      "Supadata is not configured. Please add your Supadata API key in settings.",
-      "SUPADATA_NOT_CONFIGURED"
+      "Could not get a transcript. The video has no captions; add a Groq API key (speech-to-text) or a Supadata API key in settings.",
+      "NO_TRANSCRIPT_SOURCE"
     );
   }
 

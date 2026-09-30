@@ -93,6 +93,34 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (service === "groq") {
+      // Groq exposes an OpenAI-compatible API; listing models validates the key
+      const client = new OpenAI({
+        apiKey: apiKey,
+        baseURL: "https://api.groq.com/openai/v1",
+      });
+
+      try {
+        await client.models.list();
+        return NextResponse.json({
+          success: true,
+          message: "Groq API key is valid",
+        });
+      } catch (apiError: unknown) {
+        const errorMessage = apiError instanceof Error ? apiError.message : "Unknown error";
+        if (errorMessage.includes("401") || errorMessage.includes("Invalid API Key") || errorMessage.includes("invalid")) {
+          return NextResponse.json(
+            { success: false, error: "Invalid API key" },
+            { status: 401 }
+          );
+        }
+        return NextResponse.json(
+          { success: false, error: `API test failed: ${errorMessage}` },
+          { status: 400 }
+        );
+      }
+    }
+
     if (service === "deepseek") {
       // Test DeepSeek API key by making a simple completion request
       const client = new OpenAI({

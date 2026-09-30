@@ -19,6 +19,8 @@ export default function SetupWizard() {
 
   // Step 1: Supadata API key state
   const [supadataKey, setSupadataKey] = useState("")
+  const [sttProvider, setSttProvider] = useState<"groq" | "supadata">("groq")
+  const sttLabel = sttProvider === "groq" ? "Groq" : "Supadata"
   const [supadataStatus, setSupadataStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
   const [supadataError, setSupadataError] = useState("")
   const [supadataSaving, setSupadataSaving] = useState(false)
@@ -72,7 +74,7 @@ export default function SetupWizard() {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ service: "supadata", apiKey: supadataKey }),
+        body: JSON.stringify({ service: sttProvider, apiKey: supadataKey }),
       })
 
       const data = await response.json()
@@ -107,7 +109,7 @@ export default function SetupWizard() {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ service: "supadata", apiKey: supadataKey }),
+        body: JSON.stringify({ service: sttProvider, apiKey: supadataKey }),
       })
 
       const data = await response.json()
@@ -184,7 +186,7 @@ export default function SetupWizard() {
   }
 
   const steps = [
-    { number: 1, title: "Supadata API" },
+    { number: 1, title: "Transcript API" },
     { number: 2, title: "AI API" },
   ]
 
@@ -257,20 +259,38 @@ export default function SetupWizard() {
                   <>
                     <div className="flex items-center space-x-2 text-lg font-medium text-slate-900">
                       <Key className="h-5 w-5 text-accent-primary" />
-                      <span>Step 1: Supadata API Key</span>
+                      <span>Step 1: {sttLabel} API Key</span>
                     </div>
 
                     <p className="text-sm text-slate-500">
-                      Supadata is used to fetch YouTube video transcripts. Get your API key from{" "}
+                      Captions are fetched for free from YouTube. For videos without captions, a speech-to-text
+                      key is used to transcribe the audio. Groq (Whisper) is recommended:{" "}
                       <a
-                        href="https://supadata.ai/?ref=devrico003"
+                        href="https://console.groq.com/keys"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-accent-primary hover:underline"
                       >
-                        supadata.ai
+                        console.groq.com
                       </a>
                     </p>
+
+                    <div className="flex gap-2">
+                      {(["groq", "supadata"] as const).map((p) => (
+                        <Button
+                          key={p}
+                          type="button"
+                          variant={sttProvider === p ? "default" : "outline"}
+                          onClick={() => {
+                            setSttProvider(p)
+                            setSupadataStatus("idle")
+                            setSupadataError("")
+                          }}
+                        >
+                          {p === "groq" ? "Groq (Whisper)" : "Supadata"}
+                        </Button>
+                      ))}
+                    </div>
 
                     {/* API Key Input */}
                     <div className="space-y-2">
@@ -284,7 +304,7 @@ export default function SetupWizard() {
                             setSupadataStatus("idle")
                             setSupadataError("")
                           }}
-                          placeholder="Enter your Supadata API key"
+                          placeholder={`Enter your ${sttLabel} API key`}
                           className="flex-1"
                         />
                         <Button
@@ -317,16 +337,12 @@ export default function SetupWizard() {
 
                     {/* Info box */}
                     <div className="bg-slate-50 rounded-xl p-4 space-y-2 border border-slate-100">
-                      <h4 className="font-medium text-sm text-slate-900">Why Supadata?</h4>
+                      <h4 className="font-medium text-sm text-slate-900">How transcripts are fetched</h4>
                       <ul className="text-sm text-slate-500 space-y-1 list-disc list-inside">
-                        <li>Fetches transcripts from YouTube, TikTok, Instagram</li>
-                        <li>Supports multiple languages</li>
-                        <li>Provides accurate timestamps for topic detection</li>
-                        <li><strong className="text-slate-700">100 free credits per month</strong></li>
+                        <li>1. YouTube captions (free, no key)</li>
+                        <li>2. Groq Whisper speech-to-text when there are no captions</li>
+                        <li>3. Supadata (optional) as a last resort</li>
                       </ul>
-                      <p className="text-sm text-amber-600 mt-2">
-                        <strong>Required:</strong> A Supadata API key is needed to fetch video transcripts.
-                      </p>
                     </div>
 
                     {/* Navigation */}

@@ -3,14 +3,16 @@ import { authenticateRequest } from "@/lib/apiAuth";
 import { getUserApiKeysWithMasked, deleteUserApiKey } from "@/lib/userConfig";
 import { clearGlmClient } from "@/lib/glm";
 import { clearDeepseekClient } from "@/lib/deepseek";
+import { clearGroqClient } from "@/lib/groqTranscript";
 
 const SERVICE_NAMES: Record<string, string> = {
   supadata: "Supadata",
   zai: "Z.AI (GLM-4.7)",
   deepseek: "DeepSeek",
+  groq: "Groq (Whisper speech-to-text)",
 };
 
-const VALID_SERVICES = ["supadata", "zai", "deepseek"];
+const VALID_SERVICES = ["supadata", "zai", "deepseek", "groq"];
 
 /**
  * GET - Retrieve status of all API keys (masked) for the user
@@ -80,6 +82,8 @@ export async function DELETE(request: NextRequest) {
       clearGlmClient(auth.userId);
     } else if (service === "deepseek") {
       clearDeepseekClient(auth.userId);
+    } else if (service === "groq") {
+      clearGroqClient(auth.userId);
     }
 
     return NextResponse.json({

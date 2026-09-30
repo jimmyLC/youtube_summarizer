@@ -120,6 +120,7 @@ export async function getUserApiKeys(
     supadata: false,
     zai: false,
     deepseek: false,
+    groq: false,
   };
 
   for (const key of apiKeys) {
@@ -148,6 +149,7 @@ export async function getUserApiKeysWithMasked(
     supadata: { configured: false, masked: null },
     zai: { configured: false, masked: null },
     deepseek: { configured: false, masked: null },
+    groq: { configured: false, masked: null },
   };
 
   for (const apiKey of apiKeys) {

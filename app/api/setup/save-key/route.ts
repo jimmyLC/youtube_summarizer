@@ -4,10 +4,11 @@ import { authenticateRequest } from "@/lib/apiAuth";
 import { setUserApiKey } from "@/lib/userConfig";
 import { clearGlmClient } from "@/lib/glm";
 import { clearDeepseekClient } from "@/lib/deepseek";
+import { clearGroqClient } from "@/lib/groqTranscript";
 import { clearSupadataClient } from "@/lib/supadata";
 
 // Valid service names
-const VALID_SERVICES = ["supadata", "zai", "deepseek"];
+const VALID_SERVICES = ["supadata", "zai", "deepseek", "groq"];
 
 export async function POST(request: NextRequest) {
   try {
@@ -61,6 +62,8 @@ export async function POST(request: NextRequest) {
       clearGlmClient(auth.userId);
     } else if (service === "deepseek") {
       clearDeepseekClient(auth.userId);
+    } else if (service === "groq") {
+      clearGroqClient(auth.userId);
     }
 
     return NextResponse.json({

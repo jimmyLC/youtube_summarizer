@@ -26,7 +26,7 @@ interface ApiKeyState {
   deleting: boolean
 }
 
-const API_KEY_SERVICES = ["supadata", "zai", "deepseek"] as const
+const API_KEY_SERVICES = ["supadata", "zai", "deepseek", "groq"] as const
 type ApiKeyService = typeof API_KEY_SERVICES[number]
 
 export default function SettingsPage() {
@@ -228,6 +228,11 @@ export default function SettingsPage() {
         description: "GLM-4.7 model - Coding Plan or API Credit Mode",
         url: "https://z.ai/subscribe?ic=D7NHC27OHD",
         urlLabel: "z.ai"
+      },
+      groq: {
+        description: "Whisper speech-to-text for videos without captions",
+        url: "https://console.groq.com/keys",
+        urlLabel: "console.groq.com"
       },
       deepseek: {
         description: "DeepSeek V3 model - low-cost, strong Chinese summaries",

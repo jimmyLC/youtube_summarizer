@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
       const { content: transcriptContent, hasTimestamps } = transcriptResult;
 
       // Log Supadata usage
-      await logApiUsage(userId, "supadata", "transcript", hasTimestamps ? 1 : 2, 0);
+      await logApiUsage(userId, transcriptResult.source ?? "supadata", "transcript", hasTimestamps ? 1 : 2, 0);
 
       // Convert transcript content to string for storage and LLM processing
       const transcriptText = Array.isArray(transcriptContent)
@@ -382,6 +382,9 @@ export async function POST(req: NextRequest) {
             break;
           case "UNAUTHORIZED":
             errorMessage = "Invalid API key. Please check your Supadata API key in settings.";
+            break;
+          case "NO_TRANSCRIPT_SOURCE":
+            errorMessage = error.message;
             break;
           case "SUPADATA_NOT_CONFIGURED":
             errorMessage = "Supadata is not configured. Please add your API key in settings.";
