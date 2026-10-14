@@ -1,6 +1,6 @@
 # 進度
 
-最後更新：2026-10-09
+最後更新：2026-10-15
 
 ## 目標
 
@@ -16,6 +16,8 @@
 - 註冊精簡：拿掉安全問題那一步，密碼改為 8 字元＋大小寫＋數字。
 - 修正重複存檔錯誤（`Unique constraint failed`）、頁面標題抓不到、章節標題是英文。
 - 新增 Mac mini 部署腳本與說明（`deploy/`）、轉錄同時上限（預設 2）。
+- **已上線**：https://yt.jimmy-tools.com 跑在 Mac mini（launchd 常駐 + Cloudflare Tunnel `yt-summarizer`），2026-10-15 確認可連線。
+- 修正 README：macOS 的 `cloudflared service install` 產生的服務沒有帶 `tunnel run` 會立刻結束（Error 1033），改用自訂 launchd 設定。
 
 ## 驗證結果
 
@@ -23,8 +25,9 @@
 
 ## 待辦
 
-- [ ] **部署到 Mac mini**：腳本已寫好但尚未在 Mac mini 上實際執行。步驟：clone → `./deploy/install-macmini.sh https://yt.jimmy-tools.com` → 設定 Cloudflare Tunnel → 電源設定。
-- [ ] 部署後實測 YouTube 是否會擋家用 IP，並確認重開機後服務自動恢復。
+- [ ] **開啟 Mac mini 自動登入**：網站與 Tunnel 都是使用者層級服務，沒登入桌面就不會執行（系統設定 → 使用者與群組 → 自動登入）。
+- [ ] **重開機測試**：重開後等一兩分鐘，確認網站與 Tunnel 自己恢復。
+- [ ] 實測 YouTube 是否會擋家用 IP（沒有字幕的影片走 yt-dlp 下載音訊）。
 - [ ] 介面文字（按鈕、說明）仍是英文，只有 AI 產出是繁體中文；是否中文化待決定。
 - [ ] 開放註冊後的濫用防護（目前只有轉錄同時上限與每人每分鐘 10 次的摘要限制）。
 - [ ] 忘記密碼：新帳號沒有安全問題，只能由管理者處理，需要時再補機制。

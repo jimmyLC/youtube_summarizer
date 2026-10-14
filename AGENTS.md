@@ -1,6 +1,6 @@
 # YT Summarizer（Jimmy 的 fork）
 
-`jimmyLC/youtube_summarizer`，fork 自 `DevRico003/youtube_summarizer`（remote `upstream`）。貼 YouTube 連結，產出逐字稿與繁體中文重點摘要。Next.js 16 + Prisma + SQLite + better-auth。目前進度見 [PROJECT_STATUS.md](PROJECT_STATUS.md)。部署見 [deploy/README.md](deploy/README.md)。
+`jimmyLC/youtube_summarizer`，fork 自 `DevRico003/youtube_summarizer`（remote `upstream`）。貼 YouTube 連結，產出逐字稿與繁體中文重點摘要。Next.js 16 + Prisma + SQLite + better-auth。目前進度見 [PROJECT_STATUS.md](PROJECT_STATUS.md)。正式站 https://yt.jimmy-tools.com 跑在 Jimmy 的 Mac mini（launchd + Cloudflare Tunnel），安裝與維運見 [deploy/README.md](deploy/README.md)。
 
 ## 執行與驗證
 
