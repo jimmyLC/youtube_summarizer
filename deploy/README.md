@@ -42,11 +42,34 @@ ingress:
   - service: http_status:404
 ```
 
-設成開機自動啟動：
+設成開機自動啟動。**不要用 `cloudflared service install`**：macOS 上它產生的服務沒有帶 `tunnel run`，
+會立刻結束，網站出現 Error 1033。改用自己的 launchd 設定：
 
 ```bash
-cloudflared service install
+cat > ~/Library/LaunchAgents/com.jimmy.cloudflared-yt.plist <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.jimmy.cloudflared-yt</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$(command -v cloudflared)</string>
+    <string>tunnel</string>
+    <string>run</string>
+    <string>yt-summarizer</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$HOME/Library/Logs/cloudflared-yt.log</string>
+  <key>StandardErrorPath</key><string>$HOME/Library/Logs/cloudflared-yt.log</string>
+</dict>
+</plist>
+EOF
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jimmy.cloudflared-yt.plist
 ```
+
+日誌在 `~/Library/Logs/cloudflared-yt.log`。
 
 ### 3. 讓 Mac mini 不要睡著、停電後自動開機
 
@@ -63,7 +86,7 @@ sudo pmset -a sleep 0 disksleep 0 autorestart 1
 
 | 事項 | 指令 |
 |---|---|
-| 看日誌 | `tail -f ~/Library/Logs/yt-summarizer.log` |
+| 看日誌 | `tail -f ~/Library/Logs/yt-summarizer.log`（網站）、`tail -f ~/Library/Logs/cloudflared-yt.log`（Tunnel） |
 | 更新程式 | `git pull && ./deploy/install-macmini.sh https://yt.jimmy-tools.com` |
 | 重新啟動 | `launchctl kickstart -k gui/$(id -u)/com.jimmy.yt-summarizer` |
 | 停止服務 | `launchctl bootout gui/$(id -u)/com.jimmy.yt-summarizer` |
@@ -81,6 +104,8 @@ sudo pmset -a sleep 0 disksleep 0 autorestart 1
   可用環境變數 `MAX_CONCURRENT_TRANSCRIPTIONS` 調整。
 - **開放註冊**：任何人都能註冊。摘要與轉錄用的是各人自己的 API key，但下載音訊走的是你家的網路。
   若發現濫用，可調低上述上限，或在 Cloudflare 對該網域加上速率限制規則。
+- **兩個服務都是使用者層級（user launch agent）**：只有該使用者登入桌面時才會執行。
+  Mac mini 要到「系統設定 → 使用者與群組 → 自動登入」選你的帳號，停電重開後網站才會自己回來。
 - **必須是 HTTPS**：正式環境登入 Cookie 只在 HTTPS 下有效，請一律透過 Tunnel 的網址使用，
   不要直接用 `http://<區網 IP>:3000` 登入。
 - **新帳號沒有「忘記密碼」機制**：註冊時已不設安全問題，使用者忘記密碼只能由你在資料庫處理。
