@@ -43,7 +43,7 @@ export async function summarize(input: {
 - title: a short descriptive title for the whole recording (at most 30 characters, no quotes).
 - tldr: 1-2 sentences with the core message.
 - points: 4-10 key points in video order. time = start second of that part, taken from the [m:ss] marks. title: a short phrase. detail: 1-3 sentences with the concrete facts, numbers, examples or advice. No filler.
-- tags: 1-3 topic tags (2-8 characters each). Reuse an existing tag whenever one fits; only invent a new one when none fits. Existing tags: ${input.existingTags.length ? input.existingTags.join(", ") : "(none yet)"}`
+- tags: 1-3 tags for the main subject of the whole recording, 2-8 characters each. Never tag something that is only mentioned in passing. Choose the tags from the content alone first; then, if a tag means the same as one of the existing tags, write it exactly like the existing tag. An existing tag that is not a main subject of this recording must not be used. Existing tags: ${input.existingTags.length ? input.existingTags.join(", ") : "(none yet)"}`
 
   const user = `Title: ${input.title}\nChannel: ${input.channel}\n\nTranscript:\n${transcriptForPrompt(input.lines)}`
 
