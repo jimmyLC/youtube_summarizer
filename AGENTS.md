@@ -18,6 +18,9 @@
 - **流程**（`lib/jobs.ts`）：`POST /api/videos` 建立 Video 後在背景執行 `startJob`，狀態依序為 `queued → transcribing → summarizing → done`（或 `error` 加錯誤代碼）。前端每 3 秒輪詢。伺服器重開時中斷的工作，會在下次讀取列表時標為 `INTERRUPTED`。重試會沿用已存的逐字稿。
 - **逐字稿**（`lib/transcript.ts`）：YouTube 字幕（免 key）→ 下載音訊（yt-dlp、ffmpeg 切 10 分鐘一段，同時最多 2 支）交給 Groq Whisper，失敗時同一批音檔改送 OpenAI `whisper-1`（`OPENAI_API_KEY`，選填）。中文一律經 OpenCC（`cn`→`twp`）轉台灣繁體，並把半形逗號、問號等改成全形。存成 `[秒, 文字][]` JSON。
 - **摘要與標籤**（`lib/summarize.ts`）：DeepSeek 一次呼叫回傳 JSON `{tldr, points[{time,title,detail}], tags}`。會把使用者現有的標籤放進 prompt，優先沿用。自動標籤只在影片還沒有標籤時才寫入，不覆蓋手動標籤。沒有影片使用的標籤會自動刪除。
+- **本地上傳**（`components/upload-dialog.tsx`、`lib/extract-audio.ts`、`app/api/uploads/route.ts`）：瀏覽器用 ffmpeg.wasm（單執行緒，檔案放在 `public/ffmpeg/`，由 `scripts/copy-ffmpeg.mjs` 在 `predev`／`prebuild` 從 node_modules 複製，不進 git）把影片抽成 32kbps 單聲道 mp3，以原始請求內容 POST 到 `/api/uploads`（細節放 query string），伺服器存到 `data/uploads/<id>.mp3` 後建立 `Video`（`origin="upload"`、`youtubeId="up_<id>"`）並 `startJob`。上傳走 `getTranscriptFromFile`（略過 YouTube 下載），轉錄成功就刪音檔；失敗保留音檔讓「重試」不必重傳；`TOO_LONG` 與刪除影片也會刪。限制常數在 `lib/upload-limits.ts`（瀏覽器與伺服器共用）。標題：預設檔名，摘要後若 `titleEdited=false` 換成 AI 標題；手動改過就不動。上傳的影片沒有縮圖、YouTube 連結與時間戳跳轉。
+  - ffmpeg.wasm 的坑：要用 `<script>` 載入 UMD 版（打包器會弄壞 worker）；**不能傳 `classWorkerURL`**（會變成 module worker，無法 `importScripts` 載入 UMD core）；core 用 `dist/umd`。
+  - VPS 只有 ffmpeg 沒有 ffprobe，伺服器端用 `ffmpeg -i` 的輸出讀長度。
 - **頻道筆記本**：不另存資料，直接用 `Video.channel`（YouTube oEmbed 回傳的頻道名稱）分組。首頁「頻道」分頁（`/?view=channels`）列出頻道，`/c/<頻道名>` 是該頻道的所有摘要（含一句話總結）；頻道名稱空白的影片歸在 `/c/_`（未知頻道）。伺服器與瀏覽器共用的型別和 `groupChannels` 放在 `lib/video-types.ts`，**不能引用 `lib/videos.ts`**（它會連到資料庫，瀏覽器端打包會失敗）。
 - **摘要語言**跟著轉換當下的介面語言（`zh-TW` / `en`），影片頁可以改用另一種語言重新產生。
 - **介面語言**：`lib/i18n.ts` 字典 + `components/i18n.tsx`，存在 cookie `lang`，伺服器端渲染就用對的語言。新增文字時兩種語言都要加。

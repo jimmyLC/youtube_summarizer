@@ -1,10 +1,11 @@
 import { prisma } from "./prisma"
-import { getTranscript, type Line } from "./transcript"
+import { getTranscript, getTranscriptFromFile, TooLongError, type Line } from "./transcript"
+import { audioExists, audioPath, removeAudio } from "./uploads"
 import { summarize } from "./summarize"
 import type { Lang } from "./i18n"
 
 /** Error codes stored on Video.error and translated in the UI. */
-export type ErrorCode = "NO_TRANSCRIPT" | "SUMMARY_FAILED" | "INTERRUPTED"
+export type ErrorCode = "NO_TRANSCRIPT" | "SUMMARY_FAILED" | "INTERRUPTED" | "AUDIO_MISSING" | "TOO_LONG"
 
 export const PENDING = ["queued", "transcribing", "summarizing"]
 
@@ -33,20 +34,28 @@ async function runJob(id: string) {
   } else {
     await setStatus(id, "transcribing")
     try {
-      const transcript = await getTranscript(video.youtubeId)
+      const upload = video.origin === "upload"
+      if (upload && !(await audioExists(id))) return fail(id, "AUDIO_MISSING", new Error("audio file is gone"))
+      const transcript = upload ? await getTranscriptFromFile(audioPath(id)) : await getTranscript(video.youtubeId)
       lines = transcript.lines
       await prisma.video.update({
         where: { id },
         data: { status: "summarizing", transcript: JSON.stringify(lines), source: transcript.source },
       })
+      if (upload) await removeAudio(id) // the transcript is saved; the audio is not needed any more
     } catch (e) {
+      if (e instanceof TooLongError) {
+        await removeAudio(id)
+        return fail(id, "TOO_LONG", e)
+      }
+      // A failed upload keeps its audio, so "retry" does not need a second upload
       return fail(id, "NO_TRANSCRIPT", e)
     }
   }
 
   try {
     const existing = await prisma.tag.findMany({ where: { userId: video.userId }, select: { name: true } })
-    const { summary, tags } = await summarize({
+    const { summary, tags, title } = await summarize({
       title: video.title,
       channel: video.channel,
       lines,
@@ -55,7 +64,13 @@ async function runJob(id: string) {
     })
     await prisma.video.update({
       where: { id },
-      data: { status: "done", error: null, summary: JSON.stringify(summary) },
+      data: {
+        status: "done",
+        error: null,
+        summary: JSON.stringify(summary),
+        // An upload only has its file name until now; keep a title the user wrote
+        ...(video.origin === "upload" && !video.titleEdited && title ? { title } : {}),
+      },
     })
     // Never overwrite tags the user already has on this video
     if ((await prisma.videoTag.count({ where: { videoId: id } })) === 0) {

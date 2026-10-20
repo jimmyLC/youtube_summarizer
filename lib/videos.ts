@@ -18,6 +18,7 @@ function toItem(v: Row): VideoItem {
   return {
     id: v.id,
     youtubeId: v.youtubeId,
+    origin: v.origin === "upload" ? "upload" : "youtube",
     title: v.title,
     channel: v.channel,
     status: v.status,

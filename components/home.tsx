@@ -3,12 +3,13 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowRight, ChevronRight, Loader2 } from "lucide-react"
+import { ArrowRight, ChevronRight, Loader2, Upload } from "lucide-react"
 import { groupChannels, type VideoItem } from "@/lib/video-types"
 import { extractVideoId } from "@/lib/youtube"
 import { Header, type HeaderUser } from "./header"
 import { useI18n } from "./i18n"
 import { isPending } from "./status"
+import { UploadDialog } from "./upload-dialog"
 import { VideoRow } from "./video-row"
 
 type View = "all" | "channels"
@@ -28,6 +29,9 @@ export function Home({ user, initial, shared, initialView }: {
   const [filter, setFilter] = useState<string | null>(null)
   const [view, setViewState] = useState<View>(initialView)
   const sharedHandled = useRef(false)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [file, setFile] = useState<File | null>(null)
+  const [dragging, setDragging] = useState(false)
 
   const tags = useMemo(() => {
     const count = new Map<string, number>()
@@ -36,6 +40,7 @@ export function Home({ user, initial, shared, initialView }: {
   }, [videos])
 
   const channels = useMemo(() => groupChannels(videos), [videos])
+  const notebooks = useMemo(() => channels.map((c) => c.name).filter(Boolean), [channels])
 
   const setView = (next: View) => {
     setViewState(next)
@@ -78,6 +83,34 @@ export function Home({ user, initial, shared, initialView }: {
     }
   }
 
+  // Drop a file anywhere on the page
+  useEffect(() => {
+    const hasFile = (e: DragEvent) => e.dataTransfer?.types.includes("Files")
+    const over = (e: DragEvent) => {
+      if (!hasFile(e)) return
+      e.preventDefault()
+      setDragging(true)
+    }
+    const leave = (e: DragEvent) => {
+      if (e.relatedTarget === null) setDragging(false)
+    }
+    const drop = (e: DragEvent) => {
+      if (!hasFile(e)) return
+      e.preventDefault()
+      setDragging(false)
+      const dropped = e.dataTransfer?.files[0]
+      if (dropped) setFile(dropped)
+    }
+    window.addEventListener("dragover", over)
+    window.addEventListener("dragleave", leave)
+    window.addEventListener("drop", drop)
+    return () => {
+      window.removeEventListener("dragover", over)
+      window.removeEventListener("dragleave", leave)
+      window.removeEventListener("drop", drop)
+    }
+  }, [])
+
   // Android share sheet -> /?text=... (see app/manifest.ts)
   useEffect(() => {
     if (shared && !sharedHandled.current) {
@@ -117,6 +150,26 @@ export function Home({ user, initial, shared, initialView }: {
           inputMode="url"
           autoComplete="off"
           className="min-w-0 flex-1 bg-transparent py-2 text-base outline-none placeholder:text-muted"
+        />
+        <button
+          type="button"
+          onClick={() => fileInput.current?.click()}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-subtle hover:text-fg"
+          aria-label={t("upload")}
+          title={t("upload")}
+        >
+          <Upload className="h-4 w-4" />
+        </button>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="video/*,audio/*,.mkv,.m4a,.mp3,.wav,.aac,.flac"
+          className="hidden"
+          onChange={(e) => {
+            const picked = e.target.files?.[0]
+            e.target.value = ""
+            if (picked) setFile(picked)
+          }}
         />
         <button
           type="submit"
@@ -185,6 +238,13 @@ export function Home({ user, initial, shared, initialView }: {
           </ul>
           {channels.length === 0 && <p className="mt-16 text-center text-sm text-muted">{t("noChannels")}</p>}
         </>
+      )}
+
+      {file && <UploadDialog key={file.name + file.size} file={file} notebooks={notebooks} onClose={() => setFile(null)} />}
+      {dragging && (
+        <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-bg/80 text-lg font-medium">
+          <div className="rounded-3xl border-2 border-dashed border-fg/30 px-10 py-16">{t("uploadDrop")}</div>
+        </div>
       )}
     </main>
   )

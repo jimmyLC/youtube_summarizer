@@ -4,6 +4,8 @@
 export type VideoItem = {
   id: string
   youtubeId: string
+  /** upload: a local recording (no YouTube page, thumbnail or time links) */
+  origin: "youtube" | "upload"
   title: string
   channel: string
   status: string

@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { FileAudio } from "lucide-react"
 import { timeAgo } from "@/lib/i18n"
 import type { VideoItem } from "@/lib/video-types"
 import { thumbnailUrl } from "@/lib/youtube"
@@ -16,13 +17,19 @@ export function VideoRow({ video: v, showChannel = true, showTldr = false }: {
   const { lang } = useI18n()
   return (
     <Link href={`/v/${v.id}`} className="-mx-2 flex gap-3 rounded-xl p-2 hover:bg-subtle sm:gap-4">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={thumbnailUrl(v.youtubeId)}
-        alt=""
-        loading="lazy"
-        className="aspect-video w-28 shrink-0 self-start rounded-lg bg-subtle object-cover sm:w-36"
-      />
+      {v.origin === "upload" ? (
+        <div className="flex aspect-video w-28 shrink-0 items-center justify-center self-start rounded-lg bg-subtle text-muted sm:w-36">
+          <FileAudio className="h-6 w-6" />
+        </div>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={thumbnailUrl(v.youtubeId)}
+          alt=""
+          loading="lazy"
+          className="aspect-video w-28 shrink-0 self-start rounded-lg bg-subtle object-cover sm:w-36"
+        />
+      )}
       <div className="min-w-0 flex-1 py-0.5">
         <h2 className="line-clamp-2 text-[15px] font-medium leading-snug">{v.title}</h2>
         {v.status === "done" ? (

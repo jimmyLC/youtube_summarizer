@@ -55,3 +55,6 @@ playwright-report/
 test-results/
 # next-agents-md
 .next-docs/
+
+# ffmpeg.wasm copied from node_modules by scripts/copy-ffmpeg.mjs
+/public/ffmpeg/

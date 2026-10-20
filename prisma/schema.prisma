@@ -76,8 +76,16 @@ model Verification {
 model Video {
   id         String   @id @default(cuid())
   userId     String
+  /// For uploads this is an internal id ("up_" + video id), never a real YouTube id
   youtubeId  String
+  /// youtube | upload
+  origin     String   @default("youtube")
   title      String
+  /// True once the user typed a title; the AI title never replaces it
+  titleEdited Boolean @default(false)
+  /// Uploads only: the original file's name and size, to spot the same file twice
+  fileName   String?
+  fileSize   Int?
   channel    String   @default("")
   /// queued | transcribing | summarizing | done | error
   status     String   @default("queued")

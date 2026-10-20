@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
-import { ArrowLeft, Check, Copy, ExternalLink, Plus, X } from "lucide-react"
+import { ArrowLeft, Check, Copy, ExternalLink, FileAudio, Pencil, Plus, X } from "lucide-react"
 import type { VideoDetail } from "@/lib/video-types"
 import { formatTime, watchUrl } from "@/lib/youtube"
 import { Header, type HeaderUser } from "./header"
@@ -20,6 +20,7 @@ export function VideoView({ user, initial, allTags }: { user: HeaderUser; initia
   const [copied, setCopied] = useState(false)
 
   const pending = isPending(video.status)
+  const upload = video.origin === "upload"
   useEffect(() => {
     if (!pending) return
     const timer = setInterval(async () => {
@@ -57,8 +58,7 @@ export function VideoView({ user, initial, allTags }: { user: HeaderUser; initia
             video.summary.tldr,
             "",
             ...video.summary.points.map((p) => `[${formatTime(p.time)}] ${p.title}\n${p.detail}`),
-            "",
-            watchUrl(video.youtubeId),
+            ...(upload ? [] : ["", watchUrl(video.youtubeId)]),
           ].join("\n")
         : paragraphs.map((p) => `[${formatTime(p.time)}] ${p.text}`).join("\n\n")
     await navigator.clipboard.writeText(text)
@@ -75,22 +75,33 @@ export function VideoView({ user, initial, allTags }: { user: HeaderUser; initia
         {t("back")}
       </Link>
 
-      <h1 className="mt-4 text-xl font-semibold leading-snug tracking-tight sm:text-2xl">{video.title}</h1>
+      {upload ? (
+        <TitleEditor video={video} onChange={setVideo} />
+      ) : (
+        <h1 className="mt-4 text-xl font-semibold leading-snug tracking-tight sm:text-2xl">{video.title}</h1>
+      )}
       <div className="mt-2 flex items-center gap-3 text-sm text-muted">
         {video.channel && (
           <Link href={`/c/${encodeURIComponent(video.channel)}`} className="truncate hover:text-fg hover:underline">
             {video.channel}
           </Link>
         )}
-        <a
-          href={watchUrl(video.youtubeId)}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex shrink-0 items-center gap-1 hover:text-fg"
-        >
-          {t("openYouTube")}
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
+        {upload ? (
+          <span className="inline-flex shrink-0 items-center gap-1">
+            <FileAudio className="h-3.5 w-3.5" />
+            {t("uploadedFile")}
+          </span>
+        ) : (
+          <a
+            href={watchUrl(video.youtubeId)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex shrink-0 items-center gap-1 hover:text-fg"
+          >
+            {t("openYouTube")}
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        )}
       </div>
 
       <TagEditor video={video} allTags={allTags} onChange={setVideo} />
@@ -134,7 +145,7 @@ export function VideoView({ user, initial, allTags }: { user: HeaderUser; initia
               <ol className="mt-6 space-y-5">
                 {video.summary.points.map((p, i) => (
                   <li key={i} className="flex gap-3">
-                    <TimeLink id={video.youtubeId} time={p.time} />
+                    <TimeLink id={upload ? null : video.youtubeId} time={p.time} />
                     <div className="min-w-0">
                       <h3 className="font-medium leading-snug">{p.title}</h3>
                       <p className="mt-1 leading-relaxed text-fg/75">{p.detail}</p>
@@ -147,7 +158,7 @@ export function VideoView({ user, initial, allTags }: { user: HeaderUser; initia
             <section className="mt-6 space-y-4">
               {paragraphs.map((p, i) => (
                 <div key={i} className="flex gap-3">
-                  <TimeLink id={video.youtubeId} time={p.time} />
+                  <TimeLink id={upload ? null : video.youtubeId} time={p.time} />
                   <p className="min-w-0 leading-relaxed text-fg/85">{p.text}</p>
                 </div>
               ))}
@@ -183,7 +194,11 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   )
 }
 
-function TimeLink({ id, time }: { id: string; time: number }) {
+function TimeLink({ id, time }: { id: string | null; time: number }) {
+  // A local recording has no page to jump to: show the time only
+  if (!id) {
+    return <span className="w-14 shrink-0 pt-0.5 text-right font-mono text-xs tabular-nums text-muted">{formatTime(time)}</span>
+  }
   return (
     <a
       href={watchUrl(id, time)}
@@ -193,6 +208,61 @@ function TimeLink({ id, time }: { id: string; time: number }) {
     >
       {formatTime(time)}
     </a>
+  )
+}
+
+/** The title of an upload; click to rename. A name typed here is never replaced by the AI title. */
+function TitleEditor({ video, onChange }: { video: VideoDetail; onChange: (v: VideoDetail) => void }) {
+  const { t } = useI18n()
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(video.title)
+
+  const save = async () => {
+    setEditing(false)
+    const title = value.trim()
+    if (!title || title === video.title) return setValue(video.title)
+    onChange({ ...video, title })
+    const res = await fetch(`/api/videos/${video.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    })
+    if (res.ok) onChange(await res.json())
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.nativeEvent.isComposing) save()
+          if (e.key === "Escape") {
+            setValue(video.title)
+            setEditing(false)
+          }
+        }}
+        className="mt-4 w-full rounded-lg border border-line bg-transparent px-2 py-1 text-xl font-semibold tracking-tight outline-none focus:border-fg/40 sm:text-2xl"
+      />
+    )
+  }
+  return (
+    <h1 className="group mt-4 flex items-start gap-2 text-xl font-semibold leading-snug tracking-tight sm:text-2xl">
+      <span className="min-w-0">{video.title}</span>
+      <button
+        onClick={() => {
+          setValue(video.title)
+          setEditing(true)
+        }}
+        className="mt-1.5 shrink-0 rounded p-1 text-muted hover:text-fg"
+        aria-label={t("editTitle")}
+        title={t("editTitle")}
+      >
+        <Pencil className="h-4 w-4" />
+      </button>
+    </h1>
   )
 }
 

@@ -7,9 +7,13 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
-    "db:push": "prisma db push"
+    "db:push": "prisma db push",
+    "predev": "node scripts/copy-ffmpeg.mjs",
+    "prebuild": "node scripts/copy-ffmpeg.mjs"
   },
   "dependencies": {
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
     "@prisma/adapter-better-sqlite3": "7.3.0",
     "@prisma/client": "7.3.0",
     "better-auth": "^1.4.18",

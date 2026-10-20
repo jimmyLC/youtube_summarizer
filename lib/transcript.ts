@@ -8,6 +8,7 @@ import * as OpenCC from "opencc-js"
 import { ProxyAgent, fetch as undiciFetch } from "undici"
 import { fetchTranscript as fetchCaptions } from "youtube-transcript-plus"
 import { watchUrl } from "./youtube"
+import { MAX_SECONDS } from "./upload-limits"
 
 /** [start in seconds, text] */
 export type Line = [number, string]
@@ -19,6 +20,7 @@ export interface Transcript {
 }
 
 export class TranscriptError extends Error {}
+export class TooLongError extends TranscriptError {}
 
 const execFileAsync = promisify(execFile)
 const toTraditional = OpenCC.Converter({ from: "cn", to: "twp" })
@@ -38,9 +40,35 @@ const YOUTUBE_PROXY = process.env.YOUTUBE_PROXY || undefined
  * Chinese output is always converted to Taiwan Traditional characters.
  */
 export async function getTranscript(youtubeId: string): Promise<Transcript> {
-  const result = (await fromCaptions(youtubeId)) ?? (await fromAudio(youtubeId))
+  return finish((await fromCaptions(youtubeId)) ?? (await fromAudio(youtubeId)))
+}
+
+/** An uploaded recording (the browser already reduced it to mono mp3): speech-to-text only. */
+export async function getTranscriptFromFile(file: string): Promise<Transcript> {
+  const list = providers()
+  const seconds = await probeSeconds(file)
+  if (seconds > MAX_SECONDS + 60) throw new TooLongError(`Audio is ${Math.round(seconds)} s long`)
+  await acquire()
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ytsum-"))
+  try {
+    return finish(await splitAndTranscribe(list, file, dir, path.basename(file)))
+  } finally {
+    release()
+    await fs.promises.rm(dir, { recursive: true, force: true })
+  }
+}
+
+function finish(result: Transcript): Transcript {
   if (!result.lang.toLowerCase().startsWith("zh")) return result
   return { ...result, lines: result.lines.map(([t, text]) => [t, fullWidthPunctuation(toTraditional(text))]) }
+}
+
+/** Length from ffmpeg's banner (the VPS only has ffmpeg, no ffprobe). Reading without an output exits non-zero. */
+async function probeSeconds(file: string): Promise<number> {
+  const banner = await run("ffmpeg", ["-hide_banner", "-i", file]).catch((e: { stderr?: string }) => e.stderr ?? "")
+  const m = banner.match(/Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/)
+  if (!m) throw new TranscriptError("Could not read the audio length")
+  return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])
 }
 
 /** Whisper writes "嗨,大家好" with ASCII punctuation; keep "1,000" and "3.5" intact. */
@@ -130,31 +158,35 @@ async function fromAudio(id: string): Promise<Transcript> {
     ])
     const source = (await fs.promises.readdir(dir)).find((f) => f.startsWith("source."))
     if (!source) throw new TranscriptError("Audio download failed")
-
-    await run("ffmpeg", [
-      "-y", "-i", path.join(dir, source),
-      "-ac", "1", "-ar", "16000", "-b:a", "32k",
-      "-f", "segment", "-segment_time", String(CHUNK_SECONDS), "-reset_timestamps", "1",
-      path.join(dir, "chunk%03d.mp3"),
-    ])
-    const chunks = (await fs.promises.readdir(dir)).filter((f) => f.startsWith("chunk")).sort()
-    if (chunks.length === 0) throw new TranscriptError("Audio split failed")
-
-    // The audio is downloaded once; each provider gets the same chunks
-    let lastError: unknown
-    for (const provider of list) {
-      try {
-        return await transcribeAll(provider, chunks.map((c) => path.join(dir, c)))
-      } catch (e) {
-        console.warn(`[transcript] ${provider.name} failed for ${id}:`, (e as Error).message)
-        lastError = e
-      }
-    }
-    throw lastError
+    return await splitAndTranscribe(list, path.join(dir, source), dir, id)
   } finally {
     release()
     await fs.promises.rm(dir, { recursive: true, force: true })
   }
+}
+
+/** Cuts the audio into chunks (the speech APIs take 25 MB at most) and transcribes them. */
+async function splitAndTranscribe(list: Provider[], input: string, dir: string, label: string): Promise<Transcript> {
+  await run("ffmpeg", [
+    "-y", "-i", input,
+    "-ac", "1", "-ar", "16000", "-b:a", "32k",
+    "-f", "segment", "-segment_time", String(CHUNK_SECONDS), "-reset_timestamps", "1",
+    path.join(dir, "chunk%03d.mp3"),
+  ])
+  const chunks = (await fs.promises.readdir(dir)).filter((f) => f.startsWith("chunk")).sort()
+  if (chunks.length === 0) throw new TranscriptError("Audio split failed")
+
+  // The audio is prepared once; each provider gets the same chunks
+  let lastError: unknown
+  for (const provider of list) {
+    try {
+      return await transcribeAll(provider, chunks.map((c) => path.join(dir, c)))
+    } catch (e) {
+      console.warn(`[transcript] ${provider.name} failed for ${label}:`, (e as Error).message)
+      lastError = e
+    }
+  }
+  throw lastError
 }
 
 async function transcribeAll(provider: Provider, files: string[]): Promise<Transcript> {
@@ -209,7 +241,8 @@ async function transcribe(
 }
 
 /** Child processes need Homebrew's bin dir when the server was started from a GUI app. */
-async function run(cmd: string, args: string[]) {
+async function run(cmd: string, args: string[]): Promise<string> {
   const PATH = ["/opt/homebrew/bin", "/usr/local/bin", process.env.PATH ?? ""].join(path.delimiter)
-  await execFileAsync(cmd, args, { env: { ...process.env, PATH }, maxBuffer: 20 * 1024 * 1024 })
+  const { stdout } = await execFileAsync(cmd, args, { env: { ...process.env, PATH }, maxBuffer: 20 * 1024 * 1024 })
+  return stdout
 }
