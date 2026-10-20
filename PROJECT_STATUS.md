@@ -32,4 +32,4 @@ Jimmy 已用 Google 登入並轉換過影片；完整流程（Groq → DeepSeek�
 - [x] Cloudflare Tunnel `yt-summarizer-vps` 與 Google 登入網址已設定。
 - [ ] Jimmy 用手機登入驗證 Google 登入（Google 設定可能要幾分鐘才生效）。
 - [ ] 手機實測 PWA（加到主畫面、Google 登入、分享）。
-- [x] Mac mini 上舊版 v1 已清理（2026-10-21）：停掉並移除舊的 Cloudflare 服務與 v1 app 的 launchd 設定，只留 YouTube 中繼 `com.jimmy.yt-relay`。舊分支也已刪除，只剩 `main`。Mac mini 上 `~/youtube_summarizer`（v1 程式與舊資料庫）和 `~/.cloudflared` 的舊 Tunnel 憑證還在，確定不要再用就可以手動刪。Cloudflare 後台舊的 Tunnel `yt-summarizer` 也還在（已沒流量），可以刪。
+- [x] 舊版 v1 已全部清除（2026-10-21）：Mac mini 上的舊服務、`~/youtube_summarizer`（含舊資料庫）、舊 Tunnel 的憑證與設定、舊日誌，以及 Cloudflare 後台舊的 Tunnel `yt-summarizer` 都已刪除；舊分支也已刪除，只剩 `main`。Mac mini 現在只負責 YouTube 中繼 `com.jimmy.yt-relay`（`~/.cloudflared/cert.pem` 是帳號登入憑證，留著未刪）。

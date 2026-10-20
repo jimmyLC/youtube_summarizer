@@ -29,7 +29,7 @@
 
 - `.env` 已被 git 忽略，不要提交。`.env.v1-backup` 是 v1 的設定備份。
 - 舊版資料庫 `dev.db`（v1）保留在根目錄但已不使用。
-- **部署**：Hetzner VPS（ssh 別名 `javis-prod`）。這台機器還跑著別的專案（各有自己的 Cloudflare Tunnel），**不能動它們**；本專案全部隔離在 `/srv/yt-summarizer`、使用者 `ytsum`、服務 `yt-summarizer` 與 `cloudflared-ytsum`、port 3210。用 `./deploy/push.sh javis-prod https://yt.jimmy-tools.com` 部署與更新，步驟見 `deploy/README.md`。`main` 就是 v2（已合併）。Mac mini 上舊的 v1 clone 停在合併前的 `main`，已退役，只剩 YouTube 中繼在用。
+- **部署**：Hetzner VPS（ssh 別名 `javis-prod`）。這台機器還跑著別的專案（各有自己的 Cloudflare Tunnel），**不能動它們**；本專案全部隔離在 `/srv/yt-summarizer`、使用者 `ytsum`、服務 `yt-summarizer` 與 `cloudflared-ytsum`、port 3210。用 `./deploy/push.sh javis-prod https://yt.jimmy-tools.com` 部署與更新，步驟見 `deploy/README.md`。`main` 就是 v2（已合併）。Mac mini 上的 v1 已全部清除，現在只剩 YouTube 中繼在用。
 - **YouTube 擋 VPS 的 IP**（2026-10-21 實測）：伺服器上的 `.env` 設 `YOUTUBE_PROXY=http://<Mac mini 的 Tailscale IP>:8888`，抓字幕（undici ProxyAgent）與 yt-dlp（`--proxy`）都走家裡 Mac mini 上的 tinyproxy（設定在 Mac mini 的 `~/yt-relay/`，launchd `com.jimmy.yt-relay`，只聽 Tailscale 位址（IP 看 Mac mini 上的 `tailscale ip -4`）、只允許 VPS、只放行 youtube.com / googlevideo.com / ytimg.com / youtu.be）。Mac mini 關機或沒登入桌面，轉換就會失敗。本機開發不設這個變數，直連即可。
 - Whisper 的 `language: "zh"` 加繁體提示詞仍不保證輸出繁體，以 OpenCC 為準。
 
