@@ -84,7 +84,7 @@ systemd-run --scope --quiet -p "MemoryMax=$MEM_BUILD" -p "MemorySwapMax=1G" \
     HOME="$APP_DIR" \
     PATH="$APP_DIR/node/bin:$APP_DIR/bin:/usr/local/bin:/usr/bin:/bin" \
     NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS="--max-old-space-size=1280" \
-    nice -n 10 bash -c "cd '$APP_DIR' && npm ci --no-audit --no-fund && npx prisma db push && npm run build"
+    nice -n 10 bash -c "cd '$APP_DIR' && npm ci --no-audit --no-fund && npx prisma db push && node scripts/migrate-notebooks.mjs && npm run build"
 runuser -u "$APP_USER" -- "$APP_DIR/bin/yt-dlp" -U >/dev/null 2>&1 || true
 
 echo "==> systemd service (port $PORT, localhost only)"

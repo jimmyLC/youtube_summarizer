@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { currentUserId } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { setTags } from "@/lib/jobs"
+import { moveVideos } from "@/lib/notebooks"
 import { removeAudio } from "@/lib/uploads"
 import { getVideo } from "@/lib/videos"
 
@@ -14,19 +15,20 @@ export async function GET(_req: Request, { params }: Ctx) {
   return video ? NextResponse.json(video) : NextResponse.json({ error: "NOT_FOUND" }, { status: 404 })
 }
 
-/** { tags?: string[], title?: string } replaces the video's tags and/or (uploads only) its title. */
+/** { tags?, title?, notebook? }: replaces the tags, renames an upload, or moves the video to a notebook by name ("" = 未分類). */
 export async function PATCH(req: Request, { params }: Ctx) {
   const userId = await currentUserId()
   if (!userId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 })
   const { id } = await params
-  const body = (await req.json().catch(() => ({}))) as { tags?: unknown; title?: unknown }
+  const body = (await req.json().catch(() => ({}))) as { tags?: unknown; title?: unknown; notebook?: unknown }
   const title = typeof body.title === "string" ? body.title.trim().slice(0, 200) : undefined
-  if (!Array.isArray(body.tags) && !title) return NextResponse.json({ error: "BAD_REQUEST" }, { status: 400 })
+  if (!Array.isArray(body.tags) && !title && typeof body.notebook !== "string") return NextResponse.json({ error: "BAD_REQUEST" }, { status: 400 })
   const video = await prisma.video.findFirst({ where: { id, userId } })
   if (!video) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 })
   if (title && video.origin === "upload") {
     await prisma.video.update({ where: { id }, data: { title, titleEdited: true } })
   }
+  if (typeof body.notebook === "string") await moveVideos(userId, [id], body.notebook)
   if (Array.isArray(body.tags)) await setTags(userId, id, body.tags.map(String))
   return NextResponse.json(await getVideo(userId, id))
 }

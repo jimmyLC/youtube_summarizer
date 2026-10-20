@@ -1,22 +1,24 @@
 "use client"
 
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowRight, ChevronRight, Loader2, Upload } from "lucide-react"
-import { groupChannels, type VideoItem } from "@/lib/video-types"
+import { ArrowRight, Loader2, Upload } from "lucide-react"
+import { notebookRows, tagRows, type NotebookItem, type NotebookRow, type VideoItem } from "@/lib/video-types"
 import { extractVideoId } from "@/lib/youtube"
 import { Header, type HeaderUser } from "./header"
 import { useI18n } from "./i18n"
+import { NotebooksTab } from "./notebooks-tab"
 import { isPending } from "./status"
+import { TagsTab } from "./tags-tab"
 import { UploadDialog } from "./upload-dialog"
 import { VideoRow } from "./video-row"
 
-type View = "all" | "channels"
+type View = "all" | "notebooks" | "tags"
 
-export function Home({ user, initial, shared, initialView }: {
+export function Home({ user, initial, initialNotebooks, shared, initialView }: {
   user: HeaderUser
   initial: VideoItem[]
+  initialNotebooks: NotebookItem[]
   shared?: string
   initialView: View
 }) {
@@ -26,36 +28,71 @@ export function Home({ user, initial, shared, initialView }: {
   const [url, setUrl] = useState("")
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
-  const [filter, setFilter] = useState<string | null>(null)
+  const [notebooks, setNotebooks] = useState(initialNotebooks)
   const [view, setViewState] = useState<View>(initialView)
   const sharedHandled = useRef(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
 
-  const tags = useMemo(() => {
-    const count = new Map<string, number>()
-    for (const v of videos) for (const tag of v.tags) count.set(tag, (count.get(tag) ?? 0) + 1)
-    return [...count].sort((a, b) => b[1] - a[1]).map(([name]) => name)
-  }, [videos])
-
-  const channels = useMemo(() => groupChannels(videos), [videos])
-  const notebooks = useMemo(() => channels.map((c) => c.name).filter(Boolean), [channels])
+  const rows = useMemo(() => notebookRows(notebooks, videos), [notebooks, videos])
+  const tags = useMemo(() => tagRows(videos), [videos])
 
   const setView = (next: View) => {
     setViewState(next)
-    window.history.replaceState(null, "", next === "channels" ? "/?view=channels" : "/")
+    window.history.replaceState(null, "", next === "all" ? "/" : `/?view=${next}`)
   }
 
-  const shown = filter ? videos.filter((v) => v.tags.includes(filter)) : videos
+  // New YouTube videos create their notebook on the server; pick those up with the list
+  const reload = async () => {
+    const [v, n] = await Promise.all([fetch("/api/videos"), fetch("/api/notebooks")])
+    if (v.ok) setVideos(await v.json())
+    if (n.ok) setNotebooks(await n.json())
+  }
+
+  const json = (method: string, body: unknown) => ({
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+
+  /** Each returns an error message to show, or null when it worked. */
+  const createNotebook = async (name: string) => {
+    const res = await fetch("/api/notebooks", json("POST", { name }))
+    if (!res.ok) return t("networkError")
+    await reload()
+    return null
+  }
+  const renameNotebook = async (id: string, name: string) => {
+    const res = await fetch(`/api/notebooks/${id}`, json("PATCH", { name }))
+    if (res.status === 409) return t("nameExists")
+    if (!res.ok) return t("networkError")
+    await reload()
+    return null
+  }
+  const deleteNotebook = async (row: NotebookRow) => {
+    if (!confirm(t("confirmDeleteNotebook").replace("{name}", row.name).replace("{n}", String(row.count)))) return
+    await fetch(`/api/notebooks/${row.id}`, { method: "DELETE" })
+    await reload()
+  }
+  const renameTag = async (name: string, to: string) => {
+    const clean = to.replace(/^#/, "")
+    if (tags.some((x) => x.name === clean && x.name !== name) && !confirm(t("confirmMergeTag").replace("{name}", clean))) return
+    await fetch("/api/tags", json("PATCH", { name, to: clean }))
+    await reload()
+  }
+  const deleteTag = async (name: string) => {
+    if (!confirm(t("confirmDeleteTag").replace("{name}", name))) return
+    await fetch("/api/tags", json("DELETE", { name }))
+    await reload()
+  }
 
   // Refresh while something is still being converted
   const pending = videos.some((v) => isPending(v.status))
   useEffect(() => {
     if (!pending) return
     const timer = setInterval(async () => {
-      const res = await fetch("/api/videos")
-      if (res.ok) setVideos(await res.json())
+      await reload()
     }, 3000)
     return () => clearInterval(timer)
   }, [pending])
@@ -186,61 +223,34 @@ export function Home({ user, initial, shared, initialView }: {
         <ViewTab active={view === "all"} onClick={() => setView("all")}>
           {t("tabAll")}
         </ViewTab>
-        <ViewTab active={view === "channels"} onClick={() => setView("channels")}>
-          {t("tabChannels")}
+        <ViewTab active={view === "notebooks"} onClick={() => setView("notebooks")}>
+          {t("tabNotebooks")}
+        </ViewTab>
+        <ViewTab active={view === "tags"} onClick={() => setView("tags")}>
+          {t("tabTags")}
         </ViewTab>
       </div>
 
-      {view === "all" ? (
+      {view === "all" && (
         <>
-          {tags.length > 0 && (
-            <nav className="no-scrollbar -mx-4 mt-4 flex gap-2 overflow-x-auto px-4">
-              <Chip active={!filter} onClick={() => setFilter(null)}>
-                {t("all")}
-              </Chip>
-              {tags.map((tag) => (
-                <Chip key={tag} active={filter === tag} onClick={() => setFilter(filter === tag ? null : tag)}>
-                  {tag}
-                </Chip>
-              ))}
-            </nav>
-          )}
           <ul className="mt-4">
-            {shown.map((v) => (
+            {videos.map((v) => (
               <li key={v.id}>
                 <VideoRow video={v} />
               </li>
             ))}
           </ul>
-          {shown.length === 0 && (
-            <p className="mt-16 text-center text-sm text-muted">{filter ? t("noMatch") : t("empty")}</p>
-          )}
-        </>
-      ) : (
-        <>
-          <ul className="mt-4">
-            {channels.map((c) => (
-              <li key={c.key}>
-                <Link href={`/c/${encodeURIComponent(c.key)}`} className="-mx-2 flex items-center gap-3 rounded-xl p-2 hover:bg-subtle">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-subtle text-lg font-medium text-muted">
-                    {(c.name || "?").trim().charAt(0).toUpperCase()}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <h2 className="truncate font-medium">{c.name || t("unknownChannel")}</h2>
-                    <p className="text-xs text-muted">
-                      {c.count} {t(c.count === 1 ? "videoOne" : "videosCount")}
-                    </p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-          {channels.length === 0 && <p className="mt-16 text-center text-sm text-muted">{t("noChannels")}</p>}
+          {videos.length === 0 && <p className="mt-16 text-center text-sm text-muted">{t("empty")}</p>}
         </>
       )}
+      {view === "notebooks" && (
+        <NotebooksTab rows={rows} onCreate={createNotebook} onRename={renameNotebook} onDelete={deleteNotebook} />
+      )}
+      {view === "tags" && <TagsTab rows={tags} onRename={renameTag} onDelete={deleteTag} />}
 
-      {file && <UploadDialog key={file.name + file.size} file={file} notebooks={notebooks} onClose={() => setFile(null)} />}
+      {file && (
+        <UploadDialog key={file.name + file.size} file={file} notebooks={notebooks.map((n) => n.name)} onClose={() => setFile(null)} />
+      )}
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-bg/80 text-lg font-medium">
           <div className="rounded-3xl border-2 border-dashed border-fg/30 px-10 py-16">{t("uploadDrop")}</div>
@@ -255,17 +265,6 @@ function ViewTab({ active, onClick, children }: { active: boolean; onClick: () =
     <button
       onClick={onClick}
       className={`-mb-px border-b-2 pb-2 text-sm font-medium ${active ? "border-fg text-fg" : "border-transparent text-muted hover:text-fg"}`}
-    >
-      {children}
-    </button>
-  )
-}
-
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`shrink-0 rounded-full px-3 py-1 text-sm ${active ? "bg-fg text-bg" : "bg-subtle text-fg/80 hover:text-fg"}`}
     >
       {children}
     </button>

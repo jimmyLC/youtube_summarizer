@@ -7,6 +7,7 @@ import { currentUserId } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { startJob } from "@/lib/jobs"
 import { MAX_AUDIO_BYTES, MAX_FILE_BYTES, fileBaseName } from "@/lib/upload-limits"
+import { cleanName, notebookByName } from "@/lib/notebooks"
 import { audioPath, ensureUploadDir, removeAudio } from "@/lib/uploads"
 
 const unauthorized = () => NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 })
@@ -66,6 +67,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "BAD_REQUEST" }, { status: 400 })
   }
 
+  const channel = cleanName(params.get("channel")) || "本地上傳"
+  const notebook = await notebookByName(userId, channel)
   const title = (params.get("title") ?? "").trim().slice(0, 200) || fileBaseName(fileName)
   const video = await prisma.video.create({
     data: {
@@ -75,7 +78,8 @@ export async function POST(req: Request) {
       origin: "upload",
       title,
       titleEdited: params.get("titleEdited") === "1",
-      channel: (params.get("channel") ?? "").trim().slice(0, 100),
+      channel,
+      notebookId: notebook.id,
       lang: params.get("lang") === "en" ? "en" : "zh-TW",
       fileName,
       fileSize: fileSize || null,

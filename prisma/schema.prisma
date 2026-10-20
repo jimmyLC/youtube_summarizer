@@ -18,10 +18,11 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sessions Session[]
-  accounts Account[]
-  videos   Video[]
-  tags     Tag[]
+  sessions  Session[]
+  accounts  Account[]
+  videos    Video[]
+  tags      Tag[]
+  notebooks Notebook[]
 }
 
 model Session {
@@ -74,39 +75,58 @@ model Verification {
 
 /// One converted YouTube video per user.
 model Video {
-  id         String   @id @default(cuid())
-  userId     String
+  id          String   @id @default(cuid())
+  userId      String
   /// For uploads this is an internal id ("up_" + video id), never a real YouTube id
-  youtubeId  String
+  youtubeId   String
   /// youtube | upload
-  origin     String   @default("youtube")
-  title      String
+  origin      String   @default("youtube")
+  title       String
   /// True once the user typed a title; the AI title never replaces it
-  titleEdited Boolean @default(false)
+  titleEdited Boolean  @default(false)
   /// Uploads only: the original file's name and size, to spot the same file twice
-  fileName   String?
-  fileSize   Int?
-  channel    String   @default("")
+  fileName    String?
+  fileSize    Int?
+  /// The YouTube channel (or the upload's notebook name) when it was converted. Grouping uses notebookId.
+  channel     String   @default("")
+  /// null = 未分類 (uncategorized)
+  notebookId  String?
   /// queued | transcribing | summarizing | done | error
-  status     String   @default("queued")
+  status      String   @default("queued")
   /// Error code shown to the user (see lib/jobs.ts), plus detail for the log
-  error      String?
+  error       String?
   /// Output language of the summary: zh-TW | en
-  lang       String   @default("zh-TW")
+  lang        String   @default("zh-TW")
   /// JSON: { tldr: string, points: { time: number, title: string, detail: string }[] }
-  summary    String?
+  summary     String?
   /// JSON: [seconds, text][]
-  transcript String?
+  transcript  String?
   /// captions | groq | openai
-  source     String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  source      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tags VideoTag[]
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notebook Notebook?  @relation(fields: [notebookId], references: [id], onDelete: SetNull)
+  tags     VideoTag[]
 
   @@unique([userId, youtubeId])
   @@index([userId, createdAt])
+}
+
+/// A folder the user manages. New YouTube videos land in the notebook whose matchChannel is their channel.
+model Notebook {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  /// YouTube channel name that feeds this notebook; survives renaming. "" = none
+  matchChannel String   @default("")
+  createdAt    DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videos Video[]
+
+  @@unique([userId, name])
 }
 
 model Tag {

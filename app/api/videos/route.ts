@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { extractVideoId, fetchVideoMeta } from "@/lib/youtube"
 import { recoverInterrupted, startJob } from "@/lib/jobs"
 import { listVideos } from "@/lib/videos"
+import { notebookForChannel } from "@/lib/notebooks"
 
 const unauthorized = () => NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 })
 
@@ -11,8 +12,10 @@ export async function GET(req: Request) {
   const userId = await currentUserId()
   if (!userId) return unauthorized()
   await recoverInterrupted(userId)
-  const channel = new URL(req.url).searchParams.get("channel") ?? undefined
-  return NextResponse.json(await listVideos(userId, channel))
+  const params = new URL(req.url).searchParams
+  return NextResponse.json(
+    await listVideos(userId, { notebook: params.get("notebook") ?? undefined, tag: params.get("tag") ?? undefined })
+  )
 }
 
 /** { url, lang } -> starts a conversion, or returns the existing one for the same video. */
@@ -39,7 +42,14 @@ export async function POST(req: Request) {
 
   const meta = await fetchVideoMeta(youtubeId)
   const video = await prisma.video.create({
-    data: { userId, youtubeId, lang, title: meta?.title || youtubeId, channel: meta?.channel ?? "" },
+    data: {
+      userId,
+      youtubeId,
+      lang,
+      title: meta?.title || youtubeId,
+      channel: meta?.channel ?? "",
+      notebookId: await notebookForChannel(userId, meta?.channel ?? ""),
+    },
   })
   startJob(video.id)
   return NextResponse.json({ id: video.id, existed: false })

@@ -3,21 +3,28 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
-import { ArrowLeft, Check, Copy, ExternalLink, FileAudio, Pencil, Plus, X } from "lucide-react"
-import type { VideoDetail } from "@/lib/video-types"
+import { ArrowLeft, BookOpen, Check, ChevronDown, Copy, ExternalLink, FileAudio, Pencil, Plus, X } from "lucide-react"
+import type { NotebookItem, VideoDetail } from "@/lib/video-types"
 import { formatTime, watchUrl } from "@/lib/youtube"
 import { Header, type HeaderUser } from "./header"
 import { useI18n } from "./i18n"
+import { NotebookPicker } from "./notebook-picker"
 import { StatusLine, isPending } from "./status"
 
 type Tab = "points" | "transcript"
 
-export function VideoView({ user, initial, allTags }: { user: HeaderUser; initial: VideoDetail; allTags: string[] }) {
+export function VideoView({ user, initial, allTags, notebooks: initialNotebooks }: {
+  user: HeaderUser
+  initial: VideoDetail
+  allTags: string[]
+  notebooks: NotebookItem[]
+}) {
   const { t, lang } = useI18n()
   const router = useRouter()
   const [video, setVideo] = useState(initial)
   const [tab, setTab] = useState<Tab>("points")
   const [copied, setCopied] = useState(false)
+  const [notebooks, setNotebooks] = useState(initialNotebooks)
 
   const pending = isPending(video.status)
   const upload = video.origin === "upload"
@@ -40,6 +47,20 @@ export function VideoView({ user, initial, allTags }: { user: HeaderUser; initia
     })
     setVideo({ ...video, status: "queued", error: null, summary: null })
     setTab("points")
+  }
+
+  const moveTo = async (name: string) => {
+    const res = await fetch(`/api/videos/${video.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notebook: name }),
+    })
+    if (!res.ok) return
+    const updated = (await res.json()) as VideoDetail
+    setVideo(updated)
+    if (updated.notebookId && !notebooks.some((n) => n.id === updated.notebookId)) {
+      setNotebooks([...notebooks, { id: updated.notebookId, name: updated.notebook, createdAt: new Date().toISOString() }])
+    }
   }
 
   const remove = async () => {
@@ -81,11 +102,13 @@ export function VideoView({ user, initial, allTags }: { user: HeaderUser; initia
         <h1 className="mt-4 text-xl font-semibold leading-snug tracking-tight sm:text-2xl">{video.title}</h1>
       )}
       <div className="mt-2 flex items-center gap-3 text-sm text-muted">
-        {video.channel && (
-          <Link href={`/c/${encodeURIComponent(video.channel)}`} className="truncate hover:text-fg hover:underline">
-            {video.channel}
-          </Link>
-        )}
+        <NotebookPicker notebooks={notebooks} current={video.notebookId} onPick={moveTo} className="min-w-0">
+          <span className="inline-flex max-w-full items-center gap-1 hover:text-fg">
+            <BookOpen className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{video.notebook || t("uncategorized")}</span>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+          </span>
+        </NotebookPicker>
         {upload ? (
           <span className="inline-flex shrink-0 items-center gap-1">
             <FileAudio className="h-3.5 w-3.5" />

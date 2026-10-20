@@ -1,7 +1,7 @@
 import { prisma } from "./prisma"
-import { UNKNOWN_CHANNEL, type VideoDetail, type VideoItem } from "./video-types"
+import { UNCATEGORIZED, type VideoDetail, type VideoItem } from "./video-types"
 
-const withTags = { tags: { include: { tag: true } } } as const
+const withTags = { tags: { include: { tag: true } }, notebook: true } as const
 
 type Row = Awaited<ReturnType<typeof prisma.video.findFirstOrThrow<{ include: typeof withTags }>>>
 
@@ -20,7 +20,8 @@ function toItem(v: Row): VideoItem {
     youtubeId: v.youtubeId,
     origin: v.origin === "upload" ? "upload" : "youtube",
     title: v.title,
-    channel: v.channel,
+    notebookId: v.notebookId,
+    notebook: v.notebook?.name ?? "",
     status: v.status,
     error: v.error,
     tags: v.tags.map((t) => t.tag.name).sort(),
@@ -29,10 +30,16 @@ function toItem(v: Row): VideoItem {
   }
 }
 
-/** Newest first. `channel` limits the list to one channel notebook. */
-export async function listVideos(userId: string, channel?: string): Promise<VideoItem[]> {
+export type VideoFilter = { notebook?: string; tag?: string }
+
+/** Newest first. `notebook` is a notebook id or UNCATEGORIZED; `tag` is a tag name. */
+export async function listVideos(userId: string, filter: VideoFilter = {}): Promise<VideoItem[]> {
   const rows = await prisma.video.findMany({
-    where: { userId, ...(channel !== undefined && { channel: channel === UNKNOWN_CHANNEL ? "" : channel }) },
+    where: {
+      userId,
+      ...(filter.notebook !== undefined && { notebookId: filter.notebook === UNCATEGORIZED ? null : filter.notebook }),
+      ...(filter.tag !== undefined && { tags: { some: { tag: { name: filter.tag } } } }),
+    },
     orderBy: { createdAt: "desc" },
     // The transcript can be huge and the list never shows it
     omit: { transcript: true },

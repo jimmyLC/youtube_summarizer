@@ -14,6 +14,14 @@ export default [
     },
   },
   {
-    ignores: ["node_modules/**", ".next/**"],
+    files: ["scripts/**"],
+    languageOptions: { globals: { process: "readonly", console: "readonly" } },
+  },
+  {
+    files: ["public/sw.js"],
+    languageOptions: { globals: { self: "readonly" } },
+  },
+  {
+    ignores: ["node_modules/**", ".next/**", "public/ffmpeg/**"],
   },
 ];
