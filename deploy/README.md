@@ -1,112 +1,56 @@
-# 部署到 Mac mini（Cloudflare Tunnel + launchd）
+# 部署到 VPS（Ubuntu + Cloudflare Tunnel）
 
-架構：Mac mini 上用 `launchd` 常駐執行 Next.js（port 3000），再用 Cloudflare Tunnel 把
-`https://yt.jimmy-tools.com` 轉到 `localhost:3000`。不需要在路由器開 port，也不需要固定 IP。
+設計給**同一台機器上還有其他專案**的情況：所有東西只放在 `/srv/yt-summarizer`，用專用帳號 `ytsum`，
+自帶 Node 22、yt-dlp、ffmpeg，不裝系統套件、不動防火牆、不換系統 Node，Cloudflare Tunnel 另開獨立服務。
+網站只聽 `127.0.0.1:3210`。記憶體有上限（建置 1.7GB、執行 1.2GB），不會拖垮同機的其他服務。
 
-## 事前準備
+## 第一次部署與更新
 
-- Mac mini 已安裝 Homebrew，並已登入 GitHub（`git clone` 用）。
-- 網域 `jimmy-tools.com` 的 DNS 由 Cloudflare 管理。
-- 每位使用者自己在網站的設定頁填入 Groq 與 DeepSeek 的 API key（不會花到你的錢）。
-
-## 步驟
-
-### 1. 下載程式並安裝
+在 Mac 上、專案資料夾裡執行（同一行指令，第一次和之後更新都一樣）：
 
 ```bash
-git clone https://github.com/jimmyLC/youtube_summarizer.git
-cd youtube_summarizer
-./deploy/install-macmini.sh https://yt.jimmy-tools.com
+./deploy/push.sh javis-prod https://yt.jimmy-tools.com
 ```
 
-腳本會安裝 Node 22、yt-dlp、ffmpeg、cloudflared，建立 `.env`、初始化資料庫、建置，
-並註冊開機自動啟動。完成後 `http://localhost:3000` 應回傳 HTTP 200。
+它會用 rsync 把程式複製到伺服器（不會碰 `.env`、`data/`），再執行 `deploy/setup.sh`：
+安裝或更新、建置、重啟服務。最後印出 `App check: 200`。
 
-### 2. 設定 Cloudflare Tunnel
+## 第一次要手動做的事
 
-```bash
-cloudflared tunnel login                      # 瀏覽器會開啟，選 jimmy-tools.com 授權
-cloudflared tunnel create yt-summarizer       # 記下輸出的 Tunnel ID
-cloudflared tunnel route dns yt-summarizer yt.jimmy-tools.com
-```
+**1. 填 `.env`**（只第一次）：伺服器上的 `/srv/yt-summarizer/.env` 由腳本產生，登入密鑰是它自己隨機產生的。
+需要自己填的值：`GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`ALLOWED_EMAILS`、`GROQ_API_KEY`、`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`。
+改完執行 `systemctl restart yt-summarizer`。
 
-建立 `~/.cloudflared/config.yml`（把兩處 `<TUNNEL-ID>` 和 `<你的使用者名稱>` 換掉）：
+**2. Cloudflare Tunnel**（獨立的一條，不要動既有的）：
+1. Cloudflare → Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared，名稱 `yt-summarizer`。
+2. 複製畫面上的 token，在伺服器存成 token 檔：
+   ```bash
+   mkdir -p /etc/cloudflared-ytsum && umask 077 && nano /etc/cloudflared-ytsum/token
+   ```
+3. Public Hostname：Subdomain `yt`、Domain `jimmy-tools.com`、Service `HTTP`、URL `localhost:3210`。
+4. 再執行一次 `./deploy/push.sh ...`（或在伺服器上 `./deploy/setup.sh https://yt.jimmy-tools.com`），會建立並啟動 `cloudflared-ytsum` 服務。
 
-```yaml
-tunnel: <TUNNEL-ID>
-credentials-file: /Users/<你的使用者名稱>/.cloudflared/<TUNNEL-ID>.json
+**3. Google 登入**：Google Cloud Console → 憑證 → OAuth 用戶端 → 已授權的重新導向 URI 新增
+`https://yt.jimmy-tools.com/api/auth/callback/google`。
 
-ingress:
-  - hostname: yt.jimmy-tools.com
-    service: http://localhost:3000
-  - service: http_status:404
-```
+## YouTube 擋機房 IP
 
-設成開機自動啟動。**不要用 `cloudflared service install`**：macOS 上它產生的服務沒有帶 `tunnel run`，
-會立刻結束，網站出現 Error 1033。改用自己的 launchd 設定：
-
-```bash
-cat > ~/Library/LaunchAgents/com.jimmy.cloudflared-yt.plist <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.jimmy.cloudflared-yt</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>$(command -v cloudflared)</string>
-    <string>tunnel</string>
-    <string>run</string>
-    <string>yt-summarizer</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>$HOME/Library/Logs/cloudflared-yt.log</string>
-  <key>StandardErrorPath</key><string>$HOME/Library/Logs/cloudflared-yt.log</string>
-</dict>
-</plist>
-EOF
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jimmy.cloudflared-yt.plist
-```
-
-日誌在 `~/Library/Logs/cloudflared-yt.log`。
-
-### 3. 讓 Mac mini 不要睡著、停電後自動開機
-
-```bash
-sudo pmset -a sleep 0 disksleep 0 autorestart 1
-```
-
-### 4. 驗證
-
-- 開啟 `https://yt.jimmy-tools.com`，註冊帳號、填入 API key、貼一支影片測試。
-- 重開機一次，確認網站自己回來。
+2026-10-21 實測：這台 Hetzner VPS 的 IP 被 YouTube 判定為機器人（`Sign in to confirm you're not a bot`），
+yt-dlp 下載音訊與字幕函式庫都失敗；只有標題查詢（oEmbed）可用。解法見 `PROJECT_STATUS.md`。
 
 ## 日常維運
 
-| 事項 | 指令 |
+| 事項 | 指令（在伺服器上） |
 |---|---|
-| 看日誌 | `tail -f ~/Library/Logs/yt-summarizer.log`（網站）、`tail -f ~/Library/Logs/cloudflared-yt.log`（Tunnel） |
-| 更新程式 | `git pull && ./deploy/install-macmini.sh https://yt.jimmy-tools.com` |
-| 重新啟動 | `launchctl kickstart -k gui/$(id -u)/com.jimmy.yt-summarizer` |
-| 停止服務 | `launchctl bootout gui/$(id -u)/com.jimmy.yt-summarizer` |
-| 備份資料庫 | `./deploy/backup-db.sh` |
-
-每天凌晨 3 點自動備份（`crontab -e` 加入，路徑換成實際位置）：
-
-```
-0 3 * * * cd /Users/<你的使用者名稱>/youtube_summarizer && ./deploy/backup-db.sh
-```
+| 看日誌 | `journalctl -u yt-summarizer -f` |
+| 重新啟動 | `systemctl restart yt-summarizer` |
+| 狀態 | `systemctl status yt-summarizer cloudflared-ytsum` |
+| 備份資料庫 | `sudo -u ytsum /srv/yt-summarizer/deploy/backup.sh`（存在 `/srv/yt-summarizer/backups`，每天 03:00 自動備份，留 14 天） |
+| 更新 yt-dlp | `sudo -u ytsum env HOME=/srv/yt-summarizer /srv/yt-summarizer/bin/yt-dlp -U` |
 
 ## 注意事項
 
-- **同時轉錄上限**：沒有字幕的影片要下載音訊，預設最多同時 2 支，多的會排隊。
-  可用環境變數 `MAX_CONCURRENT_TRANSCRIPTIONS` 調整。
-- **開放註冊**：任何人都能註冊。摘要與轉錄用的是各人自己的 API key，但下載音訊走的是你家的網路。
-  若發現濫用，可調低上述上限，或在 Cloudflare 對該網域加上速率限制規則。
-- **兩個服務都是使用者層級（user launch agent）**：只有該使用者登入桌面時才會執行。
-  Mac mini 要到「系統設定 → 使用者與群組 → 自動登入」選你的帳號，停電重開後網站才會自己回來。
-- **必須是 HTTPS**：正式環境登入 Cookie 只在 HTTPS 下有效，請一律透過 Tunnel 的網址使用，
-  不要直接用 `http://<區網 IP>:3000` 登入。
-- **新帳號沒有「忘記密碼」機制**：註冊時已不設安全問題，使用者忘記密碼只能由你在資料庫處理。
-- **Node 版本**：請固定使用 Node 22（腳本已處理）。`better-sqlite3` 是原生模組，安裝時的 Node 版本和執行時不同會導致資料庫載入失敗。
+- `.env` 只存在伺服器上，不要提交到 git。
+- 同時轉錄上限預設 2 支，可在 `.env` 加 `MAX_CONCURRENT_TRANSCRIPTIONS`。
+- 要開放給別人用：清空 `ALLOWED_EMAILS`，但每個人用的都是你的 Groq／DeepSeek／OpenAI 額度。
+- 備份和資料庫都在同一台機器上；重要資料請偶爾下載一份，或開 Hetzner 的快照。

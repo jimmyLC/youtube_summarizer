@@ -1,378 +1,215 @@
-import { SupadataError } from "@supadata/js";
-import { getSupadataClient } from "./supadata";
-import { fetchTranscript as fetchYoutubeCaptions } from "youtube-transcript-plus";
-import { transcribeWithGroq } from "./groqTranscript";
-import * as OpenCC from "opencc-js";
+import fs from "fs"
+import os from "os"
+import path from "path"
+import { execFile } from "child_process"
+import { promisify } from "util"
+import OpenAI from "openai"
+import * as OpenCC from "opencc-js"
+import { ProxyAgent, fetch as undiciFetch } from "undici"
+import { fetchTranscript as fetchCaptions } from "youtube-transcript-plus"
+import { watchUrl } from "./youtube"
 
-// Simplified -> Traditional (Taiwan standard, with phrase conversion)
-const toTraditional = OpenCC.Converter({ from: "cn", to: "twp" });
+/** [start in seconds, text] */
+export type Line = [number, string]
 
-/**
- * Transcript segment with timestamp information
- */
-export interface TranscriptSegment {
-  text: string;
-  offset: number; // Start time in milliseconds
-  duration: number; // Duration in milliseconds
-  lang: string;
+export interface Transcript {
+  lines: Line[]
+  lang: string
+  source: "captions" | "groq" | "openai"
 }
 
-/**
- * Structured transcript result
- */
-export interface TranscriptResult {
-  content: TranscriptSegment[] | string;
-  lang: string;
-  availableLangs: string[];
-  hasTimestamps: boolean;
-  source?: "captions" | "groq" | "supadata";
-}
+export class TranscriptError extends Error {}
+
+const execFileAsync = promisify(execFile)
+const toTraditional = OpenCC.Converter({ from: "cn", to: "twp" })
+
+const CHUNK_SECONDS = 600 // 10 min at 32 kbps mono is ~2.4 MB (Groq and OpenAI limit 25 MB)
+const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT_TRANSCRIPTIONS || 2)
 
 /**
- * Error thrown when transcript fetching fails
+ * YOUTUBE_PROXY (e.g. http://<relay-ip>:8888) sends every request to YouTube through a
+ * home-network relay. Needed on a VPS, because YouTube blocks datacenter IPs. Unset = direct.
  */
-export class TranscriptError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string
-  ) {
-    super(message);
-    this.name = "TranscriptError";
+const YOUTUBE_PROXY = process.env.YOUTUBE_PROXY || undefined
+
+/**
+ * YouTube captions first (free, fast); videos without captions are
+ * downloaded with yt-dlp and transcribed by Groq Whisper (OpenAI as backup).
+ * Chinese output is always converted to Taiwan Traditional characters.
+ */
+export async function getTranscript(youtubeId: string): Promise<Transcript> {
+  const result = (await fromCaptions(youtubeId)) ?? (await fromAudio(youtubeId))
+  if (!result.lang.toLowerCase().startsWith("zh")) return result
+  return { ...result, lines: result.lines.map(([t, text]) => [t, fullWidthPunctuation(toTraditional(text))]) }
+}
+
+/** Whisper writes "嗨,大家好" with ASCII punctuation; keep "1,000" and "3.5" intact. */
+const fullWidthPunctuation = (s: string) =>
+  s.replace(/(?<!\d),|,(?!\d)/g, "，").replace(/\?/g, "？").replace(/!/g, "！").replace(/:(?!\d)/g, "：")
+
+async function fromCaptions(id: string): Promise<Transcript | null> {
+  try {
+    const items = await fetchCaptions(watchUrl(id), proxiedFetchers())
+    if (items.length === 0) return null
+    return {
+      lines: items.map((c) => [round1(c.offset), decode(c.text)]),
+      lang: items[0].lang || "unknown",
+      source: "captions",
+    }
+  } catch (e) {
+    console.warn(`[transcript] no captions for ${id}:`, (e as Error).message)
+    return null
   }
 }
 
-/**
- * Retry helper with exponential backoff for rate-limited requests
- * @param fn - The async function to retry
- * @param options - Retry configuration
- * @returns The result of the function
- */
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  options: { maxRetries?: number; baseDelayMs?: number } = {}
-): Promise<T> {
-  const { maxRetries = 3, baseDelayMs = 1000 } = options;
+type Hook = { url: string; lang?: string; userAgent?: string; method?: string; body?: string; headers?: Record<string, string> }
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+/** The library's three request hooks, re-sent through the proxy with the same headers it would use. */
+function proxiedFetchers() {
+  if (!YOUTUBE_PROXY) return {}
+  const dispatcher = new ProxyAgent(YOUTUBE_PROXY)
+  const send = ({ url, lang, userAgent, method, body, headers }: Hook) =>
+    undiciFetch(url, {
+      method,
+      body,
+      headers: { ...(lang && { "Accept-Language": lang }), ...(userAgent && { "User-Agent": userAgent }), ...headers },
+      dispatcher,
+    }) as unknown as Promise<Response>
+  return { videoFetch: send, playerFetch: send, transcriptFetch: send }
+}
+
+const round1 = (n: number) => Math.round(n * 10) / 10
+const decode = (s: string) =>
+  s.replace(/&amp;#39;|&#39;/g, "'").replace(/&amp;quot;|&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ").trim()
+
+// ---------- Speech-to-text: Groq Whisper, OpenAI as backup ----------
+
+type Provider = { name: "groq" | "openai"; client: OpenAI; model: string }
+
+/** Groq first (fast, cheap); OpenAI takes over when Groq fails or has no key. */
+function providers(): Provider[] {
+  const list: Provider[] = []
+  if (process.env.GROQ_API_KEY) {
+    list.push({
+      name: "groq",
+      client: new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: "https://api.groq.com/openai/v1" }),
+      model: "whisper-large-v3-turbo",
+    })
+  }
+  if (process.env.OPENAI_API_KEY) {
+    // whisper-1 is OpenAI's model that returns segment timestamps
+    list.push({ name: "openai", client: new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), model: "whisper-1" })
+  }
+  if (list.length === 0) throw new TranscriptError("Neither GROQ_API_KEY nor OPENAI_API_KEY is set")
+  return list
+}
+
+// Global limit on simultaneous audio downloads, so one IP does not hammer YouTube
+let active = 0
+const waiting: Array<() => void> = []
+async function acquire() {
+  if (active < MAX_CONCURRENT) active++
+  else await new Promise<void>((resolve) => waiting.push(resolve))
+}
+function release() {
+  const next = waiting.shift()
+  if (next) next()
+  else active--
+}
+
+async function fromAudio(id: string): Promise<Transcript> {
+  const list = providers()
+  await acquire()
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ytsum-"))
+  try {
+    await run("yt-dlp", [
+      "-f", "bestaudio", "--no-playlist",
+      "--js-runtimes", `node:${process.execPath}`, // YouTube needs a JS runtime to unlock the audio formats
+      ...(YOUTUBE_PROXY ? ["--proxy", YOUTUBE_PROXY] : []),
+      "-o", path.join(dir, "source.%(ext)s"), watchUrl(id),
+    ])
+    const source = (await fs.promises.readdir(dir)).find((f) => f.startsWith("source."))
+    if (!source) throw new TranscriptError("Audio download failed")
+
+    await run("ffmpeg", [
+      "-y", "-i", path.join(dir, source),
+      "-ac", "1", "-ar", "16000", "-b:a", "32k",
+      "-f", "segment", "-segment_time", String(CHUNK_SECONDS), "-reset_timestamps", "1",
+      path.join(dir, "chunk%03d.mp3"),
+    ])
+    const chunks = (await fs.promises.readdir(dir)).filter((f) => f.startsWith("chunk")).sort()
+    if (chunks.length === 0) throw new TranscriptError("Audio split failed")
+
+    // The audio is downloaded once; each provider gets the same chunks
+    let lastError: unknown
+    for (const provider of list) {
+      try {
+        return await transcribeAll(provider, chunks.map((c) => path.join(dir, c)))
+      } catch (e) {
+        console.warn(`[transcript] ${provider.name} failed for ${id}:`, (e as Error).message)
+        lastError = e
+      }
+    }
+    throw lastError
+  } finally {
+    release()
+    await fs.promises.rm(dir, { recursive: true, force: true })
+  }
+}
+
+async function transcribeAll(provider: Provider, files: string[]): Promise<Transcript> {
+  // Detect the language on chunk 1; for Chinese, re-run with a Traditional-Chinese hint
+  let first = await transcribe(provider, files[0], {})
+  const chinese = /^(zh|chinese)/i.test(first.language)
+  const options = chinese ? { language: "zh", prompt: "以下是繁體中文的逐字稿。" } : {}
+  if (chinese) first = await transcribe(provider, files[0], options)
+
+  const lines: Line[] = []
+  const add = (segments: WhisperSegment[], chunk: number) => {
+    for (const s of segments) {
+      const text = s.text.trim()
+      if (text) lines.push([round1(chunk * CHUNK_SECONDS + s.start), text])
+    }
+  }
+  add(first.segments, 0)
+  for (let i = 1; i < files.length; i++) {
+    add((await transcribe(provider, files[i], options)).segments, i)
+  }
+  return { lines, lang: chinese ? "zh" : first.language, source: provider.name }
+}
+
+interface WhisperSegment {
+  start: number
+  text: string
+}
+
+async function transcribe(
+  { client, model }: Provider,
+  file: string,
+  options: { language?: string; prompt?: string }
+): Promise<{ language: string; segments: WhisperSegment[] }> {
+  for (let attempt = 0; ; attempt++) {
     try {
-      return await fn();
-    } catch (error) {
-      // Only retry on rate limit errors
-      if (error instanceof SupadataError && error.error === "limit-exceeded") {
-        if (attempt < maxRetries) {
-          const delay = baseDelayMs * Math.pow(2, attempt);
-          console.log(`Rate limit hit, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          continue;
-        }
+      const result = (await client.audio.transcriptions.create({
+        file: fs.createReadStream(file),
+        model,
+        response_format: "verbose_json",
+        timestamp_granularities: ["segment"],
+        ...options,
+      })) as unknown as { language?: string; segments?: WhisperSegment[] }
+      return { language: result.language ?? "unknown", segments: result.segments ?? [] }
+    } catch (e) {
+      if ((e as { status?: number }).status === 429 && attempt < 3) {
+        await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)))
+        continue
       }
-      throw error;
+      throw e
     }
-  }
-  // This should never be reached, but TypeScript needs it
-  throw new Error("Max retries exceeded");
-}
-
-/**
- * Fetches transcript for a video URL using Supadata SDK
- *
- * Strategy:
- * 1. Try mode='native' first (1 credit) - returns existing transcripts with timestamps
- * 2. On failure, fallback to mode='generate' - forces AI transcript creation
- *
- * @param videoUrl - The YouTube video URL
- * @param userId - The user's ID (required for API key lookup)
- * @returns Structured transcript with content, language info, and timestamp indicator
- * @throws TranscriptError if all methods fail or Supadata is not configured
- */
-export async function fetchTranscript(
-  videoUrl: string,
-  userId: string
-): Promise<TranscriptResult> {
-  const result = await fetchTranscriptRaw(videoUrl, userId);
-
-  // Chinese transcripts (Whisper and some captions) may contain Simplified characters
-  if (!result.lang.toLowerCase().startsWith("zh")) return result;
-
-  return {
-    ...result,
-    content: Array.isArray(result.content)
-      ? result.content.map((s) => ({ ...s, text: toTraditional(s.text) }))
-      : toTraditional(result.content),
-  };
-}
-
-async function fetchTranscriptRaw(
-  videoUrl: string,
-  userId: string
-): Promise<TranscriptResult> {
-  // 1. Free: existing YouTube captions (no API key needed)
-  try {
-    const captions = await fetchYoutubeCaptions(videoUrl);
-    if (captions.length > 0) {
-      const lang = captions[0].lang || "unknown";
-      return {
-        content: captions.map((c) => ({
-          text: c.text,
-          offset: Math.round(c.offset * 1000),
-          duration: Math.round(c.duration * 1000),
-          lang,
-        })),
-        lang,
-        availableLangs: [lang],
-        hasTimestamps: true,
-        source: "captions",
-      };
-    }
-  } catch (captionError) {
-    console.warn(
-      "YouTube captions unavailable, trying next source:",
-      captionError instanceof Error ? captionError.message : "Unknown error"
-    );
-  }
-
-  // 2. Groq Whisper speech-to-text (video has no usable captions)
-  try {
-    const groqResult = await transcribeWithGroq(videoUrl, userId);
-    if (groqResult && groqResult.segments.length > 0) {
-      return {
-        content: groqResult.segments,
-        lang: groqResult.lang,
-        availableLangs: [groqResult.lang],
-        hasTimestamps: true,
-        source: "groq",
-      };
-    }
-  } catch (groqError) {
-    console.warn(
-      "Groq transcription failed, trying next source:",
-      groqError instanceof Error ? groqError.message : "Unknown error"
-    );
-  }
-
-  // 3. Supadata (optional, if configured)
-  const client = await getSupadataClient(userId);
-
-  if (!client) {
-    throw new TranscriptError(
-      "Could not get a transcript. The video has no captions; add a Groq API key (speech-to-text) or a Supadata API key in settings.",
-      "NO_TRANSCRIPT_SOURCE"
-    );
-  }
-
-  // First, try native mode (cheaper - 1 credit, uses existing transcripts)
-  // Wrap in retry for rate-limit handling
-  try {
-    const nativeResult = await withRetry(
-      () =>
-        client.transcript({
-          url: videoUrl,
-          mode: "native",
-          text: false, // Request timestamps
-        }),
-      { maxRetries: 3, baseDelayMs: 1000 }
-    );
-
-    // Check if we got a job ID (async processing) instead of transcript
-    if ("jobId" in nativeResult) {
-      // Poll for results - native mode shouldn't usually need this
-      // but handle it just in case
-      const jobResult = await pollForTranscriptResult(client, nativeResult.jobId, {
-        timeoutMs: 60_000,
-      });
-      return formatTranscriptResult(jobResult, true);
-    }
-
-    // Direct result - native transcripts always have timestamps
-    return formatTranscriptResult(nativeResult, true);
-  } catch (nativeError) {
-    // Check for specific SupadataError types
-    if (nativeError instanceof SupadataError) {
-      if (nativeError.error === "limit-exceeded") {
-        // Rate limit persisted after retries - throw specific error
-        throw new TranscriptError(
-          `API rate limit exceeded. Please wait a moment and try again. ${nativeError.details || ""}`.trim(),
-          "RATE_LIMIT_EXCEEDED"
-        );
-      }
-      // Other Supadata errors that prevent fallback
-      if (nativeError.error === "unauthorized") {
-        throw new TranscriptError(
-          "Invalid Supadata API key. Please check your settings.",
-          "UNAUTHORIZED"
-        );
-      }
-      if (nativeError.error === "upgrade-required") {
-        throw new TranscriptError(
-          "Monthly API quota exceeded. Please upgrade your Supadata plan or wait for reset.",
-          "QUOTA_EXCEEDED"
-        );
-      }
-    }
-
-    // Native mode failed (no existing transcript available) - log and continue to fallback
-    console.warn(
-      "Native transcript failed, falling back to generate mode:",
-      nativeError instanceof Error ? nativeError.message : "Unknown error"
-    );
-  }
-
-  // Fallback to generate mode (forces AI transcript creation)
-  // Also wrap in retry for rate-limit handling
-  try {
-    const generateResult = await withRetry(
-      () =>
-        client.transcript({
-          url: videoUrl,
-          mode: "generate",
-          text: false, // Request timestamps
-        }),
-      { maxRetries: 3, baseDelayMs: 1000 }
-    );
-
-    // Check if we got a job ID (async processing for AI generation)
-    if ("jobId" in generateResult) {
-      const jobResult = await pollForTranscriptResult(client, generateResult.jobId, {
-        timeoutMs: 180_000,
-      });
-      // AI-generated transcripts may or may not have reliable timestamps
-      const hasTimestamps = isTimestampedContent(jobResult.content);
-      return formatTranscriptResult(jobResult, hasTimestamps);
-    }
-
-    // Direct result
-    const hasTimestamps = isTimestampedContent(generateResult.content);
-    return formatTranscriptResult(generateResult, hasTimestamps);
-  } catch (generateError) {
-    // Handle specific SupadataError types
-    if (generateError instanceof SupadataError) {
-      if (generateError.error === "limit-exceeded") {
-        throw new TranscriptError(
-          `API rate limit exceeded. Please wait a moment and try again. ${generateError.details || ""}`.trim(),
-          "RATE_LIMIT_EXCEEDED"
-        );
-      }
-      if (generateError.error === "unauthorized") {
-        throw new TranscriptError(
-          "Invalid Supadata API key. Please check your settings.",
-          "UNAUTHORIZED"
-        );
-      }
-      if (generateError.error === "upgrade-required") {
-        throw new TranscriptError(
-          "Monthly API quota exceeded. Please upgrade your Supadata plan or wait for reset.",
-          "QUOTA_EXCEEDED"
-        );
-      }
-      // Other Supadata errors
-      throw new TranscriptError(
-        `Supadata error: ${generateError.message}`,
-        "SUPADATA_ERROR"
-      );
-    }
-
-    // Generic error
-    const errorMessage =
-      generateError instanceof Error ? generateError.message : "Unknown error";
-    throw new TranscriptError(
-      `Failed to fetch transcript: ${errorMessage}`,
-      "TRANSCRIPT_FETCH_FAILED"
-    );
   }
 }
 
-/**
- * Polls for transcript job result
- * @param client - Supadata client instance
- * @param jobId - Job ID to poll
- * @returns Transcript result
- */
-async function pollForTranscriptResult(
-  client: Awaited<ReturnType<typeof getSupadataClient>>,
-  jobId: string,
-  options: { timeoutMs: number; pollIntervalMs?: number }
-): Promise<{ content: TranscriptSegment[] | string; lang: string; availableLangs: string[] }> {
-  if (!client) {
-    throw new TranscriptError(
-      "Supadata client not available",
-      "CLIENT_NOT_AVAILABLE"
-    );
-  }
-
-  const pollInterval = options.pollIntervalMs ?? 2000; // 2 seconds
-  const maxAttempts = Math.ceil(options.timeoutMs / pollInterval);
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const jobResult = await client.transcript.getJobStatus(jobId);
-
-    if (jobResult.status === "completed") {
-      // JobResult<Transcript> has the transcript in the result property
-      if (!jobResult.result) {
-        throw new TranscriptError(
-          "Transcript job completed but no result returned",
-          "NO_RESULT"
-        );
-      }
-      return {
-        content: jobResult.result.content as TranscriptSegment[] | string,
-        lang: jobResult.result.lang || "unknown",
-        availableLangs: jobResult.result.availableLangs || [],
-      };
-    }
-
-    if (jobResult.status === "failed") {
-      const errorMessage = jobResult.error?.message || "Unknown error";
-      throw new TranscriptError(
-        `Transcript job failed: ${errorMessage}`,
-        "JOB_FAILED"
-      );
-    }
-
-    // Job is still queued or active, wait and retry
-    await new Promise((resolve) => setTimeout(resolve, pollInterval));
-  }
-
-  const timeoutSeconds = Math.round(options.timeoutMs / 1000);
-  throw new TranscriptError(
-    `Transcript job timed out after ${timeoutSeconds} seconds`,
-    "JOB_TIMEOUT"
-  );
-}
-
-/**
- * Checks if content has timestamp information
- */
-function isTimestampedContent(
-  content: TranscriptSegment[] | string
-): boolean {
-  if (typeof content === "string") {
-    return false;
-  }
-
-  if (!Array.isArray(content) || content.length === 0) {
-    return false;
-  }
-
-  // Check if segments have valid offset values
-  return content.some(
-    (segment) =>
-      typeof segment.offset === "number" &&
-      typeof segment.duration === "number" &&
-      segment.offset >= 0
-  );
-}
-
-/**
- * Formats the transcript API response into our standard result format
- */
-function formatTranscriptResult(
-  apiResult: { content: TranscriptSegment[] | string; lang: string; availableLangs?: string[] },
-  hasTimestamps: boolean
-): TranscriptResult {
-  return {
-    content: apiResult.content,
-    lang: apiResult.lang || "unknown",
-    availableLangs: apiResult.availableLangs || [],
-    hasTimestamps,
-  };
+/** Child processes need Homebrew's bin dir when the server was started from a GUI app. */
+async function run(cmd: string, args: string[]) {
+  const PATH = ["/opt/homebrew/bin", "/usr/local/bin", process.env.PATH ?? ""].join(path.delimiter)
+  await execFileAsync(cmd, args, { env: { ...process.env, PATH }, maxBuffer: 20 * 1024 * 1024 })
 }

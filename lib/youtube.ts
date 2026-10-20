@@ -1,132 +1,57 @@
-const VALID_YOUTUBE_DOMAINS = [
-  'youtube.com',
-  'www.youtube.com',
-  'youtu.be',
-  'm.youtube.com'
-];
+const HOSTS = ["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"]
 
-export function extractVideoId(youtube_url: string): string {
-  const url = youtube_url.trim();
+/** Returns the 11-character video id, or null when the text is not a YouTube link. */
+export function extractVideoId(input: string): string | null {
+  const text = input.trim()
+  if (/^[\w-]{11}$/.test(text)) return text
 
-  // Security check: Only allow valid YouTube domains
+  // Shared text often wraps the link ("Check this out https://youtu.be/...")
+  const urlText = text.match(/https?:\/\/\S+/)?.[0] ?? text
+  let url: URL
   try {
-    const parsedUrl = new URL(url);
-    const hostname = parsedUrl.hostname.toLowerCase();
-    if (!VALID_YOUTUBE_DOMAINS.includes(hostname)) {
-      throw new Error("Invalid domain");
-    }
-  } catch (error) {
-    // If URL constructor threw, check if it's just a video ID (11 chars)
-    if (error instanceof TypeError) {
-      if (!/^[0-9A-Za-z_-]{11}$/.test(url)) {
-        throw new Error("Invalid YouTube URL or video ID");
-      }
-      return url;
-    }
-    // Re-throw domain validation errors
-    throw error;
+    url = new URL(urlText)
+  } catch {
+    return null
   }
+  if (!HOSTS.includes(url.hostname.toLowerCase())) return null
 
-  const patterns = [
-    /(?:v=|\/)([0-9A-Za-z_-]{11}).*/,      // Standard and shared URLs
-    /(?:embed\/)([0-9A-Za-z_-]{11})/,       // Embed URLs
-    /(?:youtu\.be\/)([0-9A-Za-z_-]{11})/,   // Shortened URLs
-    /(?:shorts\/)([0-9A-Za-z_-]{11})/,      // YouTube Shorts
-    /^([0-9A-Za-z_-]{11})$/                 // Just the video ID
-  ];
-
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) {
-      return match[1];
-    }
-  }
-
-  throw new Error("Could not extract video ID from URL");
+  if (url.hostname === "youtu.be") return matchId(url.pathname.slice(1))
+  const v = url.searchParams.get("v")
+  if (v) return matchId(v)
+  const path = url.pathname.match(/^\/(?:shorts|embed|live|v)\/([\w-]{11})/)
+  return path ? path[1] : null
 }
 
-export const AVAILABLE_LANGUAGES = {
-  '繁體中文': 'zh-TW',
-  'English': 'en',
-  'German': 'de'
-} as const;
+function matchId(s: string): string | null {
+  const m = s.match(/^[\w-]{11}/)
+  return m ? m[0] : null
+}
 
-export function createSummaryPrompt(text: string, targetLanguage: string, mode: 'video' | 'podcast' = 'video') {
-  const languagePrompts = {
-    'en': {
-      title: 'TITLE',
-      overview: 'OVERVIEW',
-      keyPoints: 'KEY POINTS',
-      takeaways: 'MAIN TAKEAWAYS',
-      context: 'CONTEXT & IMPLICATIONS'
-    },
-    'zh-TW': {
-      title: '標題',
-      overview: '概述',
-      keyPoints: '重點',
-      takeaways: '主要結論',
-      context: '背景與影響'
-    },
-    'de': {
-      title: 'TITEL',
-      overview: 'ÜBERBLICK',
-      keyPoints: 'KERNPUNKTE',
-      takeaways: 'HAUPTERKENNTNISSE',
-      context: 'KONTEXT & AUSWIRKUNGEN'
-    }
-  };
+export const watchUrl = (id: string, seconds?: number) =>
+  `https://www.youtube.com/watch?v=${id}${seconds ? `&t=${Math.floor(seconds)}s` : ""}`
 
-  const prompts = languagePrompts[targetLanguage as keyof typeof languagePrompts] || languagePrompts.en;
+export const thumbnailUrl = (id: string) => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`
 
-  if (mode === 'podcast') {
-    return `Please provide a detailed podcast-style summary of the following content in ${targetLanguage}.
-    Structure your response as follows:
-
-    🎙️ ${prompts.title}: Create an engaging title
-
-    🎧 ${prompts.overview} (3-5 sentences):
-    - Provide a detailed context and main purpose
-
-    🔍 ${prompts.keyPoints}:
-    - Deep dive into the main arguments
-    - Include specific examples and anecdotes
-    - Highlight unique perspectives and expert opinions
-
-    📈 ${prompts.takeaways}:
-    - List 5-7 practical insights
-    - Explain their significance and potential impact
-
-    🌐 ${prompts.context}:
-    - Broader context discussion
-    - Future implications and expert predictions
-
-    Text to summarize: ${text}
-
-    Ensure the summary is comprehensive enough for someone who hasn't seen the original content.`;
+/** Title and channel via YouTube oEmbed (no API key). */
+export async function fetchVideoMeta(id: string): Promise<{ title: string; channel: string } | null> {
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(watchUrl(id))}`,
+      { signal: AbortSignal.timeout(10_000) }
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as { title?: string; author_name?: string }
+    return { title: data.title ?? "", channel: data.author_name ?? "" }
+  } catch {
+    return null
   }
+}
 
-  return `Please provide a detailed summary of the following content in ${targetLanguage}.
-  Structure your response as follows:
-
-  🎯 ${prompts.title}: Create a descriptive title
-
-  📝 ${prompts.overview} (2-3 sentences):
-  - Provide a brief context and main purpose
-
-  🔑 ${prompts.keyPoints}:
-  - Extract and explain the main arguments
-  - Include specific examples
-  - Highlight unique perspectives
-
-  💡 ${prompts.takeaways}:
-  - List 3-5 practical insights
-  - Explain their significance
-
-  🔄 ${prompts.context}:
-  - Broader context discussion
-  - Future implications
-
-  Text to summarize: ${text}
-
-  Ensure the summary is comprehensive enough for someone who hasn't seen the original content.`;
+/** 125 -> "2:05", 3725 -> "1:02:05" */
+export function formatTime(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const ss = String(s % 60).padStart(2, "0")
+  return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`
 }

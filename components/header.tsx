@@ -1,76 +1,76 @@
 "use client"
 
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { useAuth } from "@/hooks/useAuth"
-import { LogIn, LogOut, Settings, User } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { authClient } from "@/lib/auth-client"
+import { LangToggle, useI18n } from "./i18n"
 
-export function Header() {
-  const { user, isAuthenticated, isLoading, logout } = useAuth()
+export type HeaderUser = { name: string | null; email: string; image: string | null }
 
-  const handleLogout = async () => {
-    await logout()
+export function Logo({ className = "h-7 w-7" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 100 100" className={className} aria-hidden>
+      <rect width="100" height="100" rx="24" fill="rgb(var(--accent))" />
+      <path d="M30 22 L62 40 L30 58 Z" fill="#fff" />
+      <rect x="22" y="68" width="56" height="6" rx="3" fill="#fff" />
+      <rect x="22" y="80" width="38" height="6" rx="3" fill="#fff" opacity="0.75" />
+    </svg>
+  )
+}
+
+export function Header({ user }: { user?: HeaderUser }) {
+  const { t } = useI18n()
+  return (
+    <header className="flex items-center justify-between py-4">
+      <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
+        <Logo />
+        {t("appName")}
+      </Link>
+      <div className="flex items-center gap-1">
+        <LangToggle />
+        {user && <UserMenu user={user} />}
+      </div>
+    </header>
+  )
+}
+
+function UserMenu({ user }: { user: HeaderUser }) {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => ref.current?.contains(e.target as Node) || setOpen(false)
+    document.addEventListener("mousedown", close)
+    return () => document.removeEventListener("mousedown", close)
+  }, [open])
+
+  const signOut = async () => {
+    await authClient.signOut()
+    window.location.href = "/"
   }
 
   return (
-    <header className="flex h-14 items-center border-b px-4 lg:px-6">
-      <h1 className="text-lg font-semibold">YouTube AI Summarizer</h1>
-
-      {/* Auth controls on right side */}
-      <div className="ml-auto flex items-center gap-2">
-        {isLoading ? (
-          <span className="text-sm text-muted-foreground">Loading...</span>
-        ) : isAuthenticated ? (
-          <>
-            {/* User email - hidden on mobile */}
-            <div className="hidden sm:flex items-center gap-1 text-sm text-muted-foreground">
-              <User className="h-4 w-4" />
-              <span className="max-w-[150px] truncate">{user?.email}</span>
-            </div>
-
-            {/* Settings link - icon only on mobile */}
-            <Button variant="ghost" size="sm" asChild className="hidden md:inline-flex">
-              <Link href="/settings">
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
-              </Link>
-            </Button>
-            <Button variant="ghost" size="icon" asChild className="md:hidden">
-              <Link href="/settings">
-                <Settings className="h-4 w-4" />
-                <span className="sr-only">Settings</span>
-              </Link>
-            </Button>
-
-            {/* Logout button - icon only on mobile */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLogout}
-              className="hidden md:inline-flex"
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Logout
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleLogout}
-              className="md:hidden"
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="sr-only">Logout</span>
-            </Button>
-          </>
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen(!open)} className="ml-1 block rounded-full" aria-label="Account">
+        {user.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={user.image} alt="" className="h-7 w-7 rounded-full" referrerPolicy="no-referrer" />
         ) : (
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/login">
-              <LogIn className="mr-2 h-4 w-4" />
-              Login
-            </Link>
-          </Button>
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-subtle text-xs font-medium">
+            {(user.name ?? user.email)[0]?.toUpperCase()}
+          </span>
         )}
-      </div>
-    </header>
+      </button>
+      {open && (
+        <div className="absolute right-0 z-10 mt-2 w-56 rounded-xl border border-line bg-bg p-1 text-sm shadow-lg">
+          <div className="truncate px-3 py-2 text-muted">{user.email}</div>
+          <button onClick={signOut} className="w-full rounded-lg px-3 py-2 text-left hover:bg-subtle">
+            {t("signOut")}
+          </button>
+        </div>
+      )}
+    </div>
   )
 }

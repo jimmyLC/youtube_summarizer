@@ -1,12 +1,9 @@
+import "dotenv/config"
+
 export default {
-  schema: 'prisma/schema.prisma',
-  migrations: {
-    path: 'prisma/migrations',
-    seed: 'npx tsx prisma/seed.ts',
-  },
+  schema: "prisma/schema.prisma",
   datasource: {
-    // Use process.env instead of env() to allow builds without DATABASE_URL
-    // (e.g., during Docker image build where DB connection isn't needed)
-    url: process.env.DATABASE_URL ?? 'file:./dev.db',
+    // process.env (not env()) so `prisma generate` works without a database
+    url: process.env.DATABASE_URL ?? "file:./data/app.db",
   },
 }

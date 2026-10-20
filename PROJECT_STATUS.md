@@ -1,35 +1,36 @@
 # 進度
 
-最後更新：2026-10-15
+最後更新：2026-10-21
 
 ## 目標
 
-貼 YouTube 連結，產出**逐字稿**與 **AI 重點摘要**，以繁體中文為主。
+貼 YouTube 連結，立刻得到**重點摘要**與**逐字稿**，以繁體中文為主。目前自己用，之後可能開放；最終放 VPS，外網可用。
 
-## 已完成（都已合進 `main`）
+## v2 重寫（分支 `v2-simple`，尚未合進 `main`）
 
-- 從 `DevRico003/youtube_summarizer` fork 到 `jimmyLC/youtube_summarizer`。
-- 繁體中文（`zh-TW`）加入語言選單並設為預設，摘要與章節標題都用繁體中文。
-- 新增 **DeepSeek** 作為摘要模型（與原本的 Z.AI GLM-4.7 並列），設定精靈可切換。
-- 逐字稿改為 **YouTube 字幕 → Groq Whisper → Supadata** 三層備援；不再必須有 Supadata。
-- 中文逐字稿自動簡轉繁（OpenCC，台灣用詞）。
-- 註冊精簡：拿掉安全問題那一步，密碼改為 8 字元＋大小寫＋數字。
-- 修正重複存檔錯誤（`Unique constraint failed`）、頁面標題抓不到、章節標題是英文。
-- 新增 Mac mini 部署腳本與說明（`deploy/`）、轉錄同時上限（預設 2）。
-- **已上線**：https://yt.jimmy-tools.com 跑在 Mac mini（launchd 常駐 + Cloudflare Tunnel `yt-summarizer`），2026-10-15 確認可連線。
-- 修正 README：macOS 的 `cloudflared service install` 產生的服務沒有帶 `tunnel run` 會立刻結束（Error 1033），改用自訂 launchd 設定。
+Jimmy 2026-10-20 的需求：介面中英切換、輸入網址立即轉換、下方直接是歷史紀錄、標籤分類（自動＋手動）、簡潔、API key 寫死、PWA、Google 登入、之後放 VPS。
 
-## 驗證結果
+已完成：
+- 整個 app 重寫，舊的註冊／設定精靈／模型選擇／安全問題／章節編輯全部移除。
+- 單頁首頁：輸入框（貼上即轉換）＋標籤篩選＋歷史紀錄。影片頁：重點／逐字稿分頁、時間戳連到 YouTube、複製、刪除、重試、改用另一種語言重新產生。
+- 標籤：AI 自動給 1–3 個（優先沿用現有標籤），可手動新增／移除。
+- 頻道筆記本：首頁「頻道」分頁，依 YouTube 頻道整理摘要（例如游庭皓的財經皓角底下就是他所有轉過的影片）。
+- OpenAI Whisper 當轉錄備援（Groq 失敗時接手）。
+- 中英介面切換（cookie 記住），深淺色跟隨系統，手機版面。
+- Google 登入＋ `ALLOWED_EMAILS` 白名單（本機預設 `acsd68500@gmail.com`）。
+- PWA：manifest、圖示、service worker、Android 分享選單。
+- Groq 與 DeepSeek key 改為 `.env`。
 
-用影片 `0dpoc2Enbz4`（18 分鐘、中文、字幕關閉）在本機以 Chrome 實測：走 Groq Whisper → DeepSeek，產出繁體中文標題、8 個章節、重點摘要與帶時間戳的繁體逐字稿，無錯誤訊息。
+已驗證（本機）：登入頁、首頁、影片頁（手機尺寸、深淺色、中英切換）、新增標籤、有字幕影片抓逐字稿、沒有 DeepSeek key 時顯示「摘要產生失敗」、API 的重試／刪除／無效網址／標籤取代、`tsc`、`eslint`、`next build`。
+
+Jimmy 已用 Google 登入並轉換過影片；完整流程（Groq → DeepSeek）已實測。尚未驗證：OpenAI 備援的自動切換（只直接呼叫過 whisper-1）、iPhone 加到主畫面後的登入。
 
 ## 待辦
 
-- [ ] **開啟 Mac mini 自動登入**：網站與 Tunnel 都是使用者層級服務，沒登入桌面就不會執行（系統設定 → 使用者與群組 → 自動登入）。
-- [ ] **重開機測試**：重開後等一兩分鐘，確認網站與 Tunnel 自己恢復。
-- [ ] 實測 YouTube 是否會擋家用 IP（沒有字幕的影片走 yt-dlp 下載音訊）。
-- [ ] 介面文字（按鈕、說明）仍是英文，只有 AI 產出是繁體中文；是否中文化待決定。
-- [ ] 開放註冊後的濫用防護（目前只有轉錄同時上限與每人每分鐘 10 次的摘要限制）。
-- [ ] 忘記密碼：新帳號沒有安全問題，只能由管理者處理，需要時再補機制。
-- [ ] `__tests__/` 是原作者留下的測試，仍引用已移除的模型，與我們的改動無關，需要時再整理。
-- [ ] 可選：摘要改用 Groq 上的 Llama，讓使用者只需要一組 key。
+- [ ] Jimmy 試用後確認是否合進 `main`。
+- [x] VPS 部署：已上線 https://yt.jimmy-tools.com，舊版 Mac mini 的網址已改指到 VPS（Hetzner VPS，隔離在 `/srv/yt-summarizer`，其他專案不受影響），2026-10-21。
+- [x] YouTube 擋機房 IP：以家裡 Mac mini 的 tinyproxy 中繼解決（`YOUTUBE_PROXY`，只允許 YouTube 網域、只開給 VPS 的 Tailscale 位址）。已在 VPS 上實測有字幕與無字幕（Groq）影片都成功。**依賴 Mac mini 開機與登入桌面**；之後可改放 NAS。
+- [x] Cloudflare Tunnel `yt-summarizer-vps` 與 Google 登入網址已設定。
+- [ ] Jimmy 用手機登入驗證 Google 登入（Google 設定可能要幾分鐘才生效）。
+- [ ] 手機實測 PWA（加到主畫面、Google 登入、分享）。
+- [ ] 合進 `main` 前要處理 Mac mini：v1 正式站 https://yt.jimmy-tools.com 還在跑舊版（也在同一台 Mac mini 上，與中繼並存）。
