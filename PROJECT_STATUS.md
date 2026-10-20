@@ -6,7 +6,7 @@
 
 貼 YouTube 連結，立刻得到**重點摘要**與**逐字稿**，以繁體中文為主。目前自己用，之後可能開放；最終放 VPS，外網可用。
 
-## v2 重寫（分支 `v2-simple`，尚未合進 `main`）
+## v2 重寫（已合進 `main`，2026-10-21）
 
 Jimmy 2026-10-20 的需求：介面中英切換、輸入網址立即轉換、下方直接是歷史紀錄、標籤分類（自動＋手動）、簡潔、API key 寫死、PWA、Google 登入、之後放 VPS。
 
@@ -27,10 +27,9 @@ Jimmy 已用 Google 登入並轉換過影片；完整流程（Groq → DeepSeek�
 
 ## 待辦
 
-- [ ] Jimmy 試用後確認是否合進 `main`。
 - [x] VPS 部署：已上線 https://yt.jimmy-tools.com，舊版 Mac mini 的網址已改指到 VPS（Hetzner VPS，隔離在 `/srv/yt-summarizer`，其他專案不受影響），2026-10-21。
 - [x] YouTube 擋機房 IP：以家裡 Mac mini 的 tinyproxy 中繼解決（`YOUTUBE_PROXY`，只允許 YouTube 網域、只開給 VPS 的 Tailscale 位址）。已在 VPS 上實測有字幕與無字幕（Groq）影片都成功。**依賴 Mac mini 開機與登入桌面**；之後可改放 NAS。
 - [x] Cloudflare Tunnel `yt-summarizer-vps` 與 Google 登入網址已設定。
 - [ ] Jimmy 用手機登入驗證 Google 登入（Google 設定可能要幾分鐘才生效）。
 - [ ] 手機實測 PWA（加到主畫面、Google 登入、分享）。
-- [ ] 合進 `main` 前要處理 Mac mini：v1 正式站 https://yt.jimmy-tools.com 還在跑舊版（也在同一台 Mac mini 上，與中繼並存）。
+- [ ] Mac mini 上舊版 v1 已退役（網址改指 VPS，app 早已停止）；它的 clone 停在合併前的舊 `main`，不會自動更新。舊的 Cloudflare 服務還在跑但沒流量，可清掉（保留 YouTube 中繼 `com.jimmy.yt-relay`）。
