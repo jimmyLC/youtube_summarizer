@@ -1,11 +1,12 @@
 import { prisma } from "./prisma"
-import { getTranscript, getTranscriptFromFile, TooLongError, type Line } from "./transcript"
+import { CookiesExpiredError, getTranscript, getTranscriptFromFile, MembersOnlyError, TooLongError, type Line } from "./transcript"
+import { memberCookiesFor } from "./member-cookies"
 import { audioExists, audioPath, removeAudio } from "./uploads"
 import { summarize } from "./summarize"
 import type { Lang } from "./i18n"
 
 /** Error codes stored on Video.error and translated in the UI. */
-export type ErrorCode = "NO_TRANSCRIPT" | "SUMMARY_FAILED" | "INTERRUPTED" | "AUDIO_MISSING" | "TOO_LONG"
+export type ErrorCode = "NO_TRANSCRIPT" | "SUMMARY_FAILED" | "INTERRUPTED" | "AUDIO_MISSING" | "TOO_LONG" | "MEMBERS_ONLY" | "COOKIES_EXPIRED"
 
 export const PENDING = ["queued", "transcribing", "summarizing"]
 
@@ -36,7 +37,7 @@ async function runJob(id: string) {
     try {
       const upload = video.origin === "upload"
       if (upload && !(await audioExists(id))) return fail(id, "AUDIO_MISSING", new Error("audio file is gone"))
-      const transcript = upload ? await getTranscriptFromFile(audioPath(id)) : await getTranscript(video.youtubeId)
+      const transcript = upload ? await getTranscriptFromFile(audioPath(id)) : await getTranscript(video.youtubeId, { memberCookies: await memberCookiesFor(video.userId) })
       lines = transcript.lines
       await prisma.video.update({
         where: { id },
@@ -48,6 +49,8 @@ async function runJob(id: string) {
         await removeAudio(id)
         return fail(id, "TOO_LONG", e)
       }
+      if (e instanceof MembersOnlyError) return fail(id, "MEMBERS_ONLY", e)
+      if (e instanceof CookiesExpiredError) return fail(id, "COOKIES_EXPIRED", e)
       // A failed upload keeps its audio, so "retry" does not need a second upload
       return fail(id, "NO_TRANSCRIPT", e)
     }

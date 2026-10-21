@@ -3,6 +3,7 @@ import { prismaAdapter } from "better-auth/adapters/prisma"
 import { nextCookies } from "better-auth/next-js"
 import { headers } from "next/headers"
 import { prisma } from "./prisma"
+import { canUseMemberCookies } from "./member-cookies"
 
 /**
  * ALLOWED_EMAILS: comma-separated Google accounts that may sign in.
@@ -64,5 +65,5 @@ export async function currentUser() {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session) return null
   const { id, name, email, image } = session.user
-  return { id, name: name || null, email, image: image ?? null }
+  return { id, name: name || null, email, image: image ?? null, memberCookies: canUseMemberCookies(email) }
 }

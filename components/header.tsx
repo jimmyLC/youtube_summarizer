@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react"
 import { authClient } from "@/lib/auth-client"
 import { LangToggle, useI18n } from "./i18n"
 
-export type HeaderUser = { name: string | null; email: string; image: string | null }
+export type HeaderUser = { name: string | null; email: string; image: string | null; memberCookies?: boolean }
 
 export function Logo({ className = "h-7 w-7" }: { className?: string }) {
   return (
@@ -66,6 +66,11 @@ function UserMenu({ user }: { user: HeaderUser }) {
       {open && (
         <div className="absolute right-0 z-10 mt-2 w-56 rounded-xl border border-line bg-bg p-1 text-sm shadow-lg">
           <div className="truncate px-3 py-2 text-muted">{user.email}</div>
+          {user.memberCookies && (
+            <Link href="/settings" className="block rounded-lg px-3 py-2 hover:bg-subtle">
+              {t("settings")}
+            </Link>
+          )}
           <button onClick={signOut} className="w-full rounded-lg px-3 py-2 text-left hover:bg-subtle">
             {t("signOut")}
           </button>

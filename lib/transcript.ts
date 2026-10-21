@@ -21,9 +21,16 @@ export interface Transcript {
 
 export class TranscriptError extends Error {}
 export class TooLongError extends TranscriptError {}
+/** A members-only video and no stored YouTube login to open it with. */
+export class MembersOnlyError extends TranscriptError {}
+/** The stored login did not open the video: expired, or the account is not a member of that channel. */
+export class CookiesExpiredError extends TranscriptError {}
 
 const execFileAsync = promisify(execFile)
 const toTraditional = OpenCC.Converter({ from: "cn", to: "twp" })
+
+// Lets tests swap in a stand-in for yt-dlp
+const YT_DLP = process.env.YT_DLP_BIN || "yt-dlp"
 
 const CHUNK_SECONDS = 600 // 10 min at 32 kbps mono is ~2.4 MB (Groq and OpenAI limit 25 MB)
 const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT_TRANSCRIPTIONS || 2)
@@ -39,8 +46,8 @@ const YOUTUBE_PROXY = process.env.YOUTUBE_PROXY || undefined
  * downloaded with yt-dlp and transcribed by Groq Whisper (OpenAI as backup).
  * Chinese output is always converted to Taiwan Traditional characters.
  */
-export async function getTranscript(youtubeId: string): Promise<Transcript> {
-  return finish((await fromCaptions(youtubeId)) ?? (await fromAudio(youtubeId)))
+export async function getTranscript(youtubeId: string, opts: { memberCookies?: string | null } = {}): Promise<Transcript> {
+  return finish((await fromCaptions(youtubeId)) ?? (await fromAudio(youtubeId, opts.memberCookies ?? null)))
 }
 
 /** An uploaded recording (the browser already reduced it to mono mp3): speech-to-text only. */
@@ -145,17 +152,45 @@ function release() {
   else active--
 }
 
-async function fromAudio(id: string): Promise<Transcript> {
+const failureText = (e: unknown) => `${(e as { stderr?: string }).stderr ?? ""}\n${(e as Error).message ?? ""}`
+const isMembersOnly = (e: unknown) =>
+  /members-only|members only|available to this channel's members|Join this channel/i.test(failureText(e))
+const isSignInWall = (e: unknown) => /Sign in to confirm|cookies are no longer valid|Please sign in/i.test(failureText(e))
+
+/**
+ * `memberCookies` is only used when the plain download fails because the video is members-only
+ * (so ordinary videos never touch the login); yt-dlp gets a throwaway copy, because it rewrites
+ * the cookie file it is given.
+ */
+async function fromAudio(id: string, memberCookies: string | null): Promise<Transcript> {
   const list = providers()
   await acquire()
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ytsum-"))
   try {
-    await run("yt-dlp", [
-      "-f", "bestaudio", "--no-playlist",
-      "--js-runtimes", `node:${process.execPath}`, // YouTube needs a JS runtime to unlock the audio formats
-      ...(YOUTUBE_PROXY ? ["--proxy", YOUTUBE_PROXY] : []),
-      "-o", path.join(dir, "source.%(ext)s"), watchUrl(id),
-    ])
+    const download = (extra: string[]) =>
+      run(YT_DLP, [
+        "-f", "bestaudio", "--no-playlist",
+        "--js-runtimes", `node:${process.execPath}`, // YouTube needs a JS runtime to unlock the audio formats
+        ...(YOUTUBE_PROXY ? ["--proxy", YOUTUBE_PROXY] : []),
+        ...extra,
+        "-o", path.join(dir, "source.%(ext)s"), watchUrl(id),
+      ])
+    try {
+      await download([])
+    } catch (e) {
+      if (!isMembersOnly(e)) throw e
+      if (!memberCookies) throw new MembersOnlyError(`${id} is members-only`)
+      const copy = path.join(dir, "cookies.txt")
+      await fs.promises.copyFile(memberCookies, copy)
+      try {
+        await download(["--cookies", copy])
+      } catch (e2) {
+        if (isMembersOnly(e2) || isSignInWall(e2)) throw new CookiesExpiredError(`${id}: the stored login was refused`)
+        throw e2
+      } finally {
+        await fs.promises.rm(copy, { force: true })
+      }
+    }
     const source = (await fs.promises.readdir(dir)).find((f) => f.startsWith("source."))
     if (!source) throw new TranscriptError("Audio download failed")
     return await splitAndTranscribe(list, path.join(dir, source), dir, id)
