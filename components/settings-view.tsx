@@ -44,7 +44,7 @@ export function SettingsView({ user, initial }: { user: HeaderUser; initial: Sta
     if (res.ok) setStatus(await res.json())
   }
 
-  const steps = [t("cookiesStep1"), t("cookiesStep2"), t("cookiesStep3"), t("cookiesStep4"), t("cookiesStep5")]
+  const steps = [t("cookiesStep1"), t("cookiesStep2"), t("cookiesStep3"), t("cookiesStep4"), t("cookiesStep5"), t("cookiesStep6")]
 
   return (
     <main className="mx-auto max-w-2xl px-4 pb-20 pt-[env(safe-area-inset-top)]">
@@ -75,6 +75,17 @@ export function SettingsView({ user, initial }: { user: HeaderUser; initial: Sta
       </div>
 
       <h2 className="mt-8 text-sm font-medium">{t("cookiesHow")}</h2>
+      <p className="mt-3 text-sm text-fg/75">
+        {t("cookiesInstall")}{" "}
+        <a
+          href="https://chromewebstore.google.com/search/Get%20cookies.txt%20LOCALLY"
+          target="_blank"
+          rel="noreferrer"
+          className="text-accent hover:underline"
+        >
+          {t("cookiesInstallLink")}
+        </a>
+      </p>
       <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-fg/75">
         {steps.map((s, i) => (
           <li key={i}>{s}</li>
