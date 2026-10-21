@@ -42,12 +42,14 @@ Jimmy 的需求：頻道名稱可以新增、編輯、刪除，並把影片自�
 已驗證（本機，測試帳號）：新增、改名、重名被擋、刪除筆記本（確認視窗顯示影片數）、影片頁換筆記本與建立新筆記本、選取模式批次搬移、標籤分頁改名合併與刪除、新轉 YouTube 影片自動進筆記本且改名後仍跟著走、舊資料遷移（Jimmy 的兩個頻道轉成筆記本，影片都在）、`tsc`、`eslint`、`next build`。遷移前已備份 `data/app.db.bak-before-notebooks`（不進 git）。
 尚未驗證：手機版面。
 
-## YouTube 會員專屬影片（分支 `feat-member-videos`，尚未合進 `main`、尚未部署）
+## YouTube 會員專屬影片（已合進 `main` 並部署到 VPS，2026-10-21）
 
 Jimmy 的需求：有些頻道有會員專區影片，也想做摘要。App 內登入做不到（Google 不允許嵌入登入，我們的 Google 登入也拿不到 YouTube 網站權限），改用 cookies：Jimmy 在設定頁匯入一次 YouTube 登入狀態（步驟寫在頁面裡），只在一般下載因會員專屬失敗時才自動帶 cookies 重試；只限 `acsd68500@gmail.com`；會員影片不抓字幕，一律下載音訊轉文字。下載走家裡 Mac mini 的中繼，所以 YouTube 看到的是家裡的 IP。
 
 已驗證（本機，用假的 yt-dlp 模擬會員專屬錯誤）：沒存登入 → `MEMBERS_ONLY`；存了 cookies → 先試一般下載失敗、再帶 cookies 成功、轉出逐字稿與摘要；cookies 失效 → `COOKIES_EXPIRED`；只留 YouTube／Google 的 cookies（facebook 等其他網域不存）；檔案權限 600／目錄 700；暫存複本用完即刪；無效內容與缺登入 cookie 被拒；未登入或不在白名單回 403；設定頁與選單連結；`tsc`、`eslint`、`next build`。
-**尚未驗證：** 真的用 Jimmy 的 cookies 開真的會員影片（需要 Jimmy 匯出 cookies 與一支會員影片連結，在 VPS 上實測）；yt-dlp 實際回報的會員專屬錯誤文字是否都符合我寫的判斷（依官方訊息寫，但沒有真實樣本）。
+Jimmy 已在本機匯出 cookies 並成功轉了真的會員影片（九日說白話 219 會員版）。VPS `.env` 已加 `MEMBER_COOKIES_EMAILS`。**尚未驗證：** 在 VPS 上用真的 cookies 轉會員影片（要在線上設定頁重新貼 cookies，本機與線上各存各的；VPS 走家裡中繼）；yt-dlp 實際回報的會員專屬錯誤文字是否都符合我寫的判斷（依官方訊息寫，但沒有真實樣本）。
+
+同日另外修正標籤：改成**不讓 AI 看到現有標籤**，只看內容決定標籤，再以「同一個詞」（忽略大小寫、空格、#、臺／台）沿用現有標籤的寫法；原本在提示詞裡叫 AI「合適就沿用」，AI 會把舊標籤硬套在不相關的影片上（重現過多次）。意思相近但寫法不同的標籤不會自動合併，可在標籤分頁手動合併。
 
 ## 待辦
 
