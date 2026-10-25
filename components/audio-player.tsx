@@ -1,7 +1,7 @@
 "use client"
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
-import { Pause, Play, RotateCcw, RotateCw } from "lucide-react"
+import { Pause, Play, RotateCcw, RotateCw, type LucideIcon } from "lucide-react"
 import { formatTime } from "@/lib/youtube"
 import { useI18n } from "./i18n"
 
@@ -11,6 +11,16 @@ export type PlayerHandle = {
 }
 
 const SPEEDS = [1, 1.25, 1.5]
+
+/** A circular arrow with the 5 (seconds) in its middle */
+function SkipIcon({ icon: Icon }: { icon: LucideIcon }) {
+  return (
+    <span className="relative flex h-5 w-5 items-center justify-center">
+      <Icon className="h-5 w-5" strokeWidth={1.75} />
+      <span className="absolute text-[9px] font-semibold leading-none">5</span>
+    </span>
+  )
+}
 
 /** Bar fixed to the bottom of the screen that plays the recording of a video. */
 export const AudioPlayer = forwardRef<PlayerHandle, { src: string; onTime: (seconds: number) => void }>(
@@ -82,7 +92,7 @@ export const AudioPlayer = forwardRef<PlayerHandle, { src: string; onTime: (seco
         />
         <div className="mx-auto flex max-w-2xl items-center gap-2 px-4 py-2">
           <button onClick={() => skip(-5)} className="rounded-full p-2 text-muted hover:text-fg" aria-label={t("player.back")} title={t("player.back")}>
-            <RotateCcw className="h-4 w-4" />
+            <SkipIcon icon={RotateCcw} />
           </button>
           <button
             onClick={toggle}
@@ -93,7 +103,7 @@ export const AudioPlayer = forwardRef<PlayerHandle, { src: string; onTime: (seco
             {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 translate-x-px" />}
           </button>
           <button onClick={() => skip(5)} className="rounded-full p-2 text-muted hover:text-fg" aria-label={t("player.forward")} title={t("player.forward")}>
-            <RotateCw className="h-4 w-4" />
+            <SkipIcon icon={RotateCw} />
           </button>
           <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-muted">{formatTime(current)}</span>
           <input
