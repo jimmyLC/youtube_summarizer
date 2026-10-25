@@ -1,4 +1,5 @@
 import { prisma } from "./prisma"
+import { audioExists } from "./uploads"
 import { UNCATEGORIZED, type VideoDetail, type VideoItem } from "./video-types"
 
 const withTags = { tags: { include: { tag: true } }, notebook: true } as const
@@ -56,5 +57,6 @@ export async function getVideo(userId: string, id: string): Promise<VideoDetail 
     lang: v.lang,
     summary: v.summary ? JSON.parse(v.summary) : null,
     transcript: v.transcript ? JSON.parse(v.transcript) : null,
+    hasAudio: await audioExists(v.id),
   }
 }

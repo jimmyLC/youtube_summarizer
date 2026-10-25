@@ -1,5 +1,5 @@
 import { prisma } from "./prisma"
-import { CookiesExpiredError, getTranscript, getTranscriptFromFile, MembersOnlyError, TooLongError, type Line } from "./transcript"
+import { CookiesExpiredError, getTranscript, getTranscriptFromFile, MembersOnlyError, saveYoutubeAudio, TooLongError, type Line } from "./transcript"
 import { memberCookiesFor } from "./member-cookies"
 import { audioExists, audioPath, removeAudio } from "./uploads"
 import { summarize } from "./summarize"
@@ -14,16 +14,19 @@ export const PENDING = ["queued", "transcribing", "summarizing"]
 const g = globalThis as unknown as { running?: Set<string> }
 const running = (g.running ??= new Set<string>())
 
-/** Runs the conversion in the background; the caller does not wait. */
-export function startJob(videoId: string) {
+/**
+ * Runs the conversion in the background; the caller does not wait.
+ * `summaryOnly`: only redo the summary from the transcript as it is now (tags and title stay).
+ */
+export function startJob(videoId: string, opts: { summaryOnly?: boolean } = {}) {
   if (running.has(videoId)) return
   running.add(videoId)
-  runJob(videoId)
+  runJob(videoId, opts.summaryOnly ?? false)
     .catch((e) => console.error(`[job ${videoId}]`, e))
     .finally(() => running.delete(videoId))
 }
 
-async function runJob(id: string) {
+async function runJob(id: string, summaryOnly: boolean) {
   const video = await prisma.video.findUnique({ where: { id } })
   if (!video) return
 
@@ -37,13 +40,14 @@ async function runJob(id: string) {
     try {
       const upload = video.origin === "upload"
       if (upload && !(await audioExists(id))) return fail(id, "AUDIO_MISSING", new Error("audio file is gone"))
-      const transcript = upload ? await getTranscriptFromFile(audioPath(id)) : await getTranscript(video.youtubeId, { memberCookies: await memberCookiesFor(video.userId) })
+      const transcript = upload
+        ? await getTranscriptFromFile(audioPath(id))
+        : await getTranscript(video.youtubeId, { memberCookies: await memberCookiesFor(video.userId), keepAudioAs: audioPath(id) })
       lines = transcript.lines
       await prisma.video.update({
         where: { id },
         data: { status: "summarizing", transcript: JSON.stringify(lines), source: transcript.source },
       })
-      if (upload) await removeAudio(id) // the transcript is saved; the audio is not needed any more
     } catch (e) {
       if (e instanceof TooLongError) {
         await removeAudio(id)
@@ -56,6 +60,10 @@ async function runJob(id: string) {
     }
   }
 
+  // Videos with captions never downloaded audio for the transcript; fetch it for playback
+  // while the summary is being written. Only a nice-to-have: failing here never fails the job.
+  const audio = !summaryOnly && video.origin === "youtube" ? keepAudio(video) : Promise.resolve()
+
   try {
     const existing = await prisma.tag.findMany({ where: { userId: video.userId }, select: { name: true } })
     const { summary, tags, title } = await summarize({
@@ -65,6 +73,7 @@ async function runJob(id: string) {
       lang: video.lang as Lang,
       existingTags: existing.map((t) => t.name),
     })
+    await audio // so the player is there when the page sees "done"
     await prisma.video.update({
       where: { id },
       data: {
@@ -72,15 +81,26 @@ async function runJob(id: string) {
         error: null,
         summary: JSON.stringify(summary),
         // An upload only has its file name until now; keep a title the user wrote
-        ...(video.origin === "upload" && !video.titleEdited && title ? { title } : {}),
+        ...(!summaryOnly && video.origin === "upload" && !video.titleEdited && title ? { title } : {}),
       },
     })
     // Never overwrite tags the user already has on this video
-    if ((await prisma.videoTag.count({ where: { videoId: id } })) === 0) {
+    if (!summaryOnly && (await prisma.videoTag.count({ where: { videoId: id } })) === 0) {
       await setTags(video.userId, id, tags)
     }
   } catch (e) {
     return fail(id, "SUMMARY_FAILED", e)
+  } finally {
+    await audio // never leave it running in the background
+  }
+}
+
+async function keepAudio(video: { id: string; youtubeId: string; userId: string }) {
+  try {
+    if (await audioExists(video.id)) return
+    await saveYoutubeAudio(video.youtubeId, await memberCookiesFor(video.userId), audioPath(video.id))
+  } catch (e) {
+    console.warn(`[job ${video.id}] could not keep the audio:`, e instanceof Error ? e.message : e)
   }
 }
 

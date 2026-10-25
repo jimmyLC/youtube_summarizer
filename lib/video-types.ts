@@ -33,6 +33,8 @@ export type VideoDetail = VideoItem & {
   lang: string
   summary: { tldr: string; points: { time: number; title: string; detail: string }[] } | null
   transcript: [number, string][] | null
+  /** The recording is on the server and can be played */
+  hasAudio: boolean
 }
 
 /** A notebook with its video count and the time of its newest video (or of its creation). */

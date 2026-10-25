@@ -46,8 +46,31 @@ const YOUTUBE_PROXY = process.env.YOUTUBE_PROXY || undefined
  * downloaded with yt-dlp and transcribed by Groq Whisper (OpenAI as backup).
  * Chinese output is always converted to Taiwan Traditional characters.
  */
-export async function getTranscript(youtubeId: string, opts: { memberCookies?: string | null } = {}): Promise<Transcript> {
-  return finish((await fromCaptions(youtubeId)) ?? (await fromAudio(youtubeId, opts.memberCookies ?? null)))
+export async function getTranscript(
+  youtubeId: string,
+  opts: { memberCookies?: string | null; keepAudioAs?: string } = {}
+): Promise<Transcript> {
+  return finish((await fromCaptions(youtubeId)) ?? (await fromAudio(youtubeId, opts.memberCookies ?? null, opts.keepAudioAs)))
+}
+
+/**
+ * The listening copy of a YouTube video that had captions (nothing was downloaded for the
+ * transcript): 32 kbps mono mp3 at `dest`, written to a .part file first so a half-written
+ * file never looks like a finished one.
+ */
+export async function saveYoutubeAudio(youtubeId: string, memberCookies: string | null, dest: string): Promise<void> {
+  await acquire()
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ytsum-"))
+  try {
+    const source = await downloadAudio(youtubeId, memberCookies, dir)
+    await fs.promises.mkdir(path.dirname(dest), { recursive: true })
+    const part = `${dest}.part`
+    await run("ffmpeg", ["-y", "-i", source, "-ac", "1", "-ar", "16000", "-b:a", "32k", "-f", "mp3", part])
+    await fs.promises.rename(part, dest)
+  } finally {
+    release()
+    await fs.promises.rm(dir, { recursive: true, force: true })
+  }
 }
 
 /** An uploaded recording (the browser already reduced it to mono mp3): speech-to-text only. */
@@ -158,42 +181,48 @@ const isMembersOnly = (e: unknown) =>
 const isSignInWall = (e: unknown) => /Sign in to confirm|cookies are no longer valid|Please sign in/i.test(failureText(e))
 
 /**
+ * Downloads the best audio of a video into `dir` and returns the file.
  * `memberCookies` is only used when the plain download fails because the video is members-only
  * (so ordinary videos never touch the login); yt-dlp gets a throwaway copy, because it rewrites
  * the cookie file it is given.
  */
-async function fromAudio(id: string, memberCookies: string | null): Promise<Transcript> {
+async function downloadAudio(id: string, memberCookies: string | null, dir: string): Promise<string> {
+  const download = (extra: string[]) =>
+    run(YT_DLP, [
+      "-f", "bestaudio", "--no-playlist",
+      "--js-runtimes", `node:${process.execPath}`, // YouTube needs a JS runtime to unlock the audio formats
+      ...(YOUTUBE_PROXY ? ["--proxy", YOUTUBE_PROXY] : []),
+      ...extra,
+      "-o", path.join(dir, "source.%(ext)s"), watchUrl(id),
+    ])
+  try {
+    await download([])
+  } catch (e) {
+    if (!isMembersOnly(e)) throw e
+    if (!memberCookies) throw new MembersOnlyError(`${id} is members-only`)
+    const copy = path.join(dir, "cookies.txt")
+    await fs.promises.copyFile(memberCookies, copy)
+    try {
+      await download(["--cookies", copy])
+    } catch (e2) {
+      if (isMembersOnly(e2) || isSignInWall(e2)) throw new CookiesExpiredError(`${id}: the stored login was refused`)
+      throw e2
+    } finally {
+      await fs.promises.rm(copy, { force: true })
+    }
+  }
+  const source = (await fs.promises.readdir(dir)).find((f) => f.startsWith("source."))
+  if (!source) throw new TranscriptError("Audio download failed")
+  return path.join(dir, source)
+}
+
+async function fromAudio(id: string, memberCookies: string | null, keepAs?: string): Promise<Transcript> {
   const list = providers()
   await acquire()
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ytsum-"))
   try {
-    const download = (extra: string[]) =>
-      run(YT_DLP, [
-        "-f", "bestaudio", "--no-playlist",
-        "--js-runtimes", `node:${process.execPath}`, // YouTube needs a JS runtime to unlock the audio formats
-        ...(YOUTUBE_PROXY ? ["--proxy", YOUTUBE_PROXY] : []),
-        ...extra,
-        "-o", path.join(dir, "source.%(ext)s"), watchUrl(id),
-      ])
-    try {
-      await download([])
-    } catch (e) {
-      if (!isMembersOnly(e)) throw e
-      if (!memberCookies) throw new MembersOnlyError(`${id} is members-only`)
-      const copy = path.join(dir, "cookies.txt")
-      await fs.promises.copyFile(memberCookies, copy)
-      try {
-        await download(["--cookies", copy])
-      } catch (e2) {
-        if (isMembersOnly(e2) || isSignInWall(e2)) throw new CookiesExpiredError(`${id}: the stored login was refused`)
-        throw e2
-      } finally {
-        await fs.promises.rm(copy, { force: true })
-      }
-    }
-    const source = (await fs.promises.readdir(dir)).find((f) => f.startsWith("source."))
-    if (!source) throw new TranscriptError("Audio download failed")
-    return await splitAndTranscribe(list, path.join(dir, source), dir, id)
+    const source = await downloadAudio(id, memberCookies, dir)
+    return await splitAndTranscribe(list, source, dir, id, keepAs)
   } finally {
     release()
     await fs.promises.rm(dir, { recursive: true, force: true })
@@ -201,7 +230,7 @@ async function fromAudio(id: string, memberCookies: string | null): Promise<Tran
 }
 
 /** Cuts the audio into chunks (the speech APIs take 25 MB at most) and transcribes them. */
-async function splitAndTranscribe(list: Provider[], input: string, dir: string, label: string): Promise<Transcript> {
+async function splitAndTranscribe(list: Provider[], input: string, dir: string, label: string, keepAs?: string): Promise<Transcript> {
   await run("ffmpeg", [
     "-y", "-i", input,
     "-ac", "1", "-ar", "16000", "-b:a", "32k",
@@ -215,13 +244,26 @@ async function splitAndTranscribe(list: Provider[], input: string, dir: string, 
   let lastError: unknown
   for (const provider of list) {
     try {
-      return await transcribeAll(provider, chunks.map((c) => path.join(dir, c)))
+      const transcript = await transcribeAll(provider, chunks.map((c) => path.join(dir, c)))
+      // The listening copy is a bonus: failing to keep it must not throw the transcript away
+      if (keepAs) await joinChunks(chunks.map((c) => path.join(dir, c)), dir, keepAs).catch((e) => console.warn(`[transcript] keeping audio of ${label} failed:`, e.message))
+      return transcript
     } catch (e) {
       console.warn(`[transcript] ${provider.name} failed for ${label}:`, (e as Error).message)
       lastError = e
     }
   }
   throw lastError
+}
+
+/** Glues the chunks back into one mp3 (no re-encoding) so the recording can be played later. */
+async function joinChunks(chunks: string[], dir: string, dest: string): Promise<void> {
+  await fs.promises.mkdir(path.dirname(dest), { recursive: true })
+  const part = `${dest}.part`
+  const list = path.join(dir, "chunks.txt")
+  await fs.promises.writeFile(list, chunks.map((c) => `file '${c.replace(/'/g, "'\\''")}'`).join("\n"))
+  await run("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", "-f", "mp3", part])
+  await fs.promises.rename(part, dest)
 }
 
 async function transcribeAll(provider: Provider, files: string[]): Promise<Transcript> {

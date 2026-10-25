@@ -1,8 +1,8 @@
 import fs from "fs"
 import path from "path"
 
-/** Where an uploaded recording's audio waits until it is transcribed. Deleted once the transcript is saved. */
-const DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "data", "uploads")
+/** Where every video's audio lives (uploads and YouTube alike): one 32 kbps mono mp3 per video, kept for playback. */
+const DIR = process.env.AUDIO_DIR || process.env.UPLOAD_DIR || path.join(process.cwd(), "data", "audio")
 
 export const audioPath = (videoId: string) => path.join(DIR, `${videoId}.mp3`)
 
