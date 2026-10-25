@@ -48,9 +48,19 @@ const YOUTUBE_PROXY = process.env.YOUTUBE_PROXY || undefined
  */
 export async function getTranscript(
   youtubeId: string,
-  opts: { memberCookies?: string | null; keepAudioAs?: string } = {}
+  opts: { memberCookies?: string | null; keepAudioAs?: string; hint?: Hint } = {}
 ): Promise<Transcript> {
-  return finish((await fromCaptions(youtubeId)) ?? (await fromAudio(youtubeId, opts.memberCookies ?? null, opts.keepAudioAs)))
+  return finish((await fromCaptions(youtubeId)) ?? (await fromAudio(youtubeId, opts.memberCookies ?? null, opts.keepAudioAs, opts.hint)))
+}
+
+/** Title and channel: names in them are spelled right, which steers Whisper's guesses at names. */
+export type Hint = { title?: string; channel?: string }
+
+function whisperPrompt(hint?: Hint): string {
+  const parts = ["以下是繁體中文的逐字稿。"]
+  if (hint?.title) parts.push(`影片標題：${hint.title.slice(0, 120)}。`)
+  if (hint?.channel) parts.push(`頻道：${hint.channel.slice(0, 40)}。`)
+  return parts.join("")
 }
 
 /**
@@ -74,14 +84,14 @@ export async function saveYoutubeAudio(youtubeId: string, memberCookies: string 
 }
 
 /** An uploaded recording (the browser already reduced it to mono mp3): speech-to-text only. */
-export async function getTranscriptFromFile(file: string): Promise<Transcript> {
+export async function getTranscriptFromFile(file: string, hint?: Hint): Promise<Transcript> {
   const list = providers()
   const seconds = await probeSeconds(file)
   if (seconds > MAX_SECONDS + 60) throw new TooLongError(`Audio is ${Math.round(seconds)} s long`)
   await acquire()
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ytsum-"))
   try {
-    return finish(await splitAndTranscribe(list, file, dir, path.basename(file)))
+    return finish(await splitAndTranscribe(list, file, dir, path.basename(file), undefined, hint))
   } finally {
     release()
     await fs.promises.rm(dir, { recursive: true, force: true })
@@ -216,13 +226,13 @@ async function downloadAudio(id: string, memberCookies: string | null, dir: stri
   return path.join(dir, source)
 }
 
-async function fromAudio(id: string, memberCookies: string | null, keepAs?: string): Promise<Transcript> {
+async function fromAudio(id: string, memberCookies: string | null, keepAs?: string, hint?: Hint): Promise<Transcript> {
   const list = providers()
   await acquire()
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ytsum-"))
   try {
     const source = await downloadAudio(id, memberCookies, dir)
-    return await splitAndTranscribe(list, source, dir, id, keepAs)
+    return await splitAndTranscribe(list, source, dir, id, keepAs, hint)
   } finally {
     release()
     await fs.promises.rm(dir, { recursive: true, force: true })
@@ -230,7 +240,7 @@ async function fromAudio(id: string, memberCookies: string | null, keepAs?: stri
 }
 
 /** Cuts the audio into chunks (the speech APIs take 25 MB at most) and transcribes them. */
-async function splitAndTranscribe(list: Provider[], input: string, dir: string, label: string, keepAs?: string): Promise<Transcript> {
+async function splitAndTranscribe(list: Provider[], input: string, dir: string, label: string, keepAs?: string, hint?: Hint): Promise<Transcript> {
   await run("ffmpeg", [
     "-y", "-i", input,
     "-ac", "1", "-ar", "16000", "-b:a", "32k",
@@ -244,7 +254,7 @@ async function splitAndTranscribe(list: Provider[], input: string, dir: string, 
   let lastError: unknown
   for (const provider of list) {
     try {
-      const transcript = await transcribeAll(provider, chunks.map((c) => path.join(dir, c)))
+      const transcript = await transcribeAll(provider, chunks.map((c) => path.join(dir, c)), hint)
       // The listening copy is a bonus: failing to keep it must not throw the transcript away
       if (keepAs) await joinChunks(chunks.map((c) => path.join(dir, c)), dir, keepAs).catch((e) => console.warn(`[transcript] keeping audio of ${label} failed:`, e.message))
       return transcript
@@ -266,11 +276,11 @@ async function joinChunks(chunks: string[], dir: string, dest: string): Promise<
   await fs.promises.rename(part, dest)
 }
 
-async function transcribeAll(provider: Provider, files: string[]): Promise<Transcript> {
+async function transcribeAll(provider: Provider, files: string[], hint?: Hint): Promise<Transcript> {
   // Detect the language on chunk 1; for Chinese, re-run with a Traditional-Chinese hint
   let first = await transcribe(provider, files[0], {})
   const chinese = /^(zh|chinese)/i.test(first.language)
-  const options = chinese ? { language: "zh", prompt: "以下是繁體中文的逐字稿。" } : {}
+  const options = chinese ? { language: "zh", prompt: whisperPrompt(hint) } : {}
   if (chinese) first = await transcribe(provider, files[0], options)
 
   const lines: Line[] = []

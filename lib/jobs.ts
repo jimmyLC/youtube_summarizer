@@ -2,6 +2,7 @@ import { prisma } from "./prisma"
 import { CookiesExpiredError, getTranscript, getTranscriptFromFile, MembersOnlyError, saveYoutubeAudio, TooLongError, type Line } from "./transcript"
 import { memberCookiesFor } from "./member-cookies"
 import { audioExists, audioPath, removeAudio } from "./uploads"
+import { polishTranscript } from "./polish"
 import { summarize } from "./summarize"
 import type { Lang } from "./i18n"
 
@@ -39,11 +40,14 @@ async function runJob(id: string, summaryOnly: boolean) {
     await setStatus(id, "transcribing")
     try {
       const upload = video.origin === "upload"
+      const hint = { title: video.title, channel: video.channel }
       if (upload && !(await audioExists(id))) return fail(id, "AUDIO_MISSING", new Error("audio file is gone"))
       const transcript = upload
-        ? await getTranscriptFromFile(audioPath(id))
-        : await getTranscript(video.youtubeId, { memberCookies: await memberCookiesFor(video.userId), keepAudioAs: audioPath(id) })
+        ? await getTranscriptFromFile(audioPath(id), hint)
+        : await getTranscript(video.youtubeId, { memberCookies: await memberCookiesFor(video.userId), keepAudioAs: audioPath(id), hint })
       lines = transcript.lines
+      // Fix same-sounding wrong characters (names, terms); Chinese only, and it never fails the job
+      if (/^zh/i.test(transcript.lang)) lines = await polishTranscript(lines, { title: video.title, channel: video.channel })
       await prisma.video.update({
         where: { id },
         data: { status: "summarizing", transcript: JSON.stringify(lines), source: transcript.source },

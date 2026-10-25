@@ -1,4 +1,4 @@
-import OpenAI from "openai"
+import { DEEPSEEK_MODEL as MODEL, deepseek } from "./deepseek"
 import type { Line } from "./transcript"
 import { formatTime } from "./youtube"
 import type { Lang } from "./i18n"
@@ -8,16 +8,7 @@ export interface Summary {
   points: { time: number; title: string; detail: string }[]
 }
 
-const MODEL = process.env.DEEPSEEK_MODEL || "deepseek-chat"
 const MAX_INPUT_CHARS = 120_000 // well inside DeepSeek's context window
-
-let client: OpenAI | null = null
-function deepseek(): OpenAI {
-  const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) throw new Error("DEEPSEEK_API_KEY is not set")
-  client ??= new OpenAI({ apiKey, baseURL: "https://api.deepseek.com" })
-  return client
-}
 
 const LANGUAGE: Record<Lang, string> = {
   "zh-TW": "Traditional Chinese as used in Taiwan (台灣繁體中文, never Simplified characters)",
