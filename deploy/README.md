@@ -36,7 +36,7 @@
 ## YouTube 擋機房 IP
 
 2026-10-21 實測：這台 Hetzner VPS 的 IP 被 YouTube 判定為機器人（`Sign in to confirm you're not a bot`），
-yt-dlp 下載音訊與字幕函式庫都失敗；只有標題查詢（oEmbed）可用。解法見 `PROJECT_STATUS.md`。
+yt-dlp 下載音訊與字幕函式庫都失敗；只有標題查詢（oEmbed）可用。解法見 `PROGRESS.md`。
 
 ## 日常維運
 
