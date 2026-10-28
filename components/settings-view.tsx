@@ -107,7 +107,7 @@ export function SettingsView({ user, initial }: { user: HeaderUser; initial: Sta
       <button
         onClick={save}
         disabled={busy || !text.trim()}
-        className="mt-3 rounded-xl bg-fg px-5 py-2 text-sm font-medium text-bg disabled:opacity-30"
+        className="mt-3 rounded-xl bg-brand text-white hover:bg-brand/90 px-5 py-2 text-sm font-medium disabled:opacity-30"
       >
         {t("cookiesSave")}
       </button>

@@ -229,7 +229,7 @@ export function VideoView({ user, initial, allTags, notebooks: initialNotebooks 
       {video.status === "error" && (
         <div className="mt-10 flex items-center justify-between rounded-2xl bg-subtle p-5">
           <StatusLine status="error" error={video.error} className="text-sm font-medium" />
-          <button onClick={() => retry()} className="rounded-lg bg-fg px-4 py-2 text-sm font-medium text-bg">
+          <button onClick={() => retry()} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90">
             {t("retry")}
           </button>
         </div>
@@ -255,7 +255,7 @@ export function VideoView({ user, initial, allTags, notebooks: initialNotebooks 
                   <button
                     onClick={saveEdit}
                     disabled={saving}
-                    className="rounded-lg bg-fg px-3 py-1 font-medium text-bg disabled:opacity-40"
+                    className="rounded-lg bg-brand px-3 py-1 font-medium text-white hover:bg-brand/90 disabled:opacity-40"
                   >
                     {saving ? t("tr.saving") : t("tr.save")}
                   </button>
@@ -284,7 +284,7 @@ export function VideoView({ user, initial, allTags, notebooks: initialNotebooks 
                 <button onClick={() => setStaleSummary(false)} className="text-muted hover:text-fg">
                   {t("tr.dismiss")}
                 </button>
-                <button onClick={resummarize} className="rounded-lg bg-fg px-3 py-1 font-medium text-bg">
+                <button onClick={resummarize} className="rounded-lg bg-brand px-3 py-1 font-medium text-white hover:bg-brand/90">
                   {t("tr.resummarize")}
                 </button>
               </span>

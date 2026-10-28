@@ -9,6 +9,7 @@
   --subtle: 244 244 245;
   --line: 228 228 231;
   --accent: 220 38 38;
+  --brand: 220 38 38;
   color-scheme: light;
 }
 
@@ -20,6 +21,7 @@
     --subtle: 32 32 35;
     --line: 44 44 48;
     --accent: 248 81 73;
+    --brand: 220 38 38;
     color-scheme: dark;
   }
 }

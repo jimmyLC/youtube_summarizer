@@ -96,7 +96,7 @@ export const AudioPlayer = forwardRef<PlayerHandle, { src: string; onTime: (seco
           </button>
           <button
             onClick={toggle}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-fg text-bg"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand text-white hover:bg-brand/90"
             aria-label={playing ? t("player.pause") : t("player.play")}
             title={playing ? t("player.pause") : t("player.play")}
           >

@@ -206,7 +206,7 @@ export function UploadDialog({ file, notebooks, onClose }: { file: File; noteboo
             <button
               onClick={start}
               disabled={blocked}
-              className="rounded-xl bg-fg px-4 py-2 text-sm font-medium text-bg disabled:opacity-30"
+              className="rounded-xl bg-brand text-white hover:bg-brand/90 px-4 py-2 text-sm font-medium disabled:opacity-30"
             >
               {t("uploadStart")}
             </button>

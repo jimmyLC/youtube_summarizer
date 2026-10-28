@@ -230,7 +230,7 @@ export function Home({ user, initial, initialNotebooks, shared, initialView }: {
         <button
           type="submit"
           disabled={busy || !url.trim()}
-          className="flex h-10 items-center gap-1 rounded-xl bg-fg px-4 text-sm font-medium text-bg disabled:opacity-30"
+          className="flex h-10 items-center gap-1 rounded-xl bg-brand text-white hover:bg-brand/90 px-4 text-sm font-medium disabled:opacity-30"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
           <span className="hidden sm:inline">{t("convert")}</span>

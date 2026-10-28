@@ -112,7 +112,7 @@ export function NotebookView({ user, notebookId, name, notebooks, initial }: {
             <span className="text-sm text-muted">{t("selectedCount").replace("{n}", String(picked.size))}</span>
             {picked.size > 0 && (
               <NotebookPicker notebooks={known} current={notebookId === "_" ? null : notebookId} onPick={move} up>
-                <span className="rounded-xl bg-fg px-4 py-2 text-sm font-medium text-bg">{t("moveTo")}</span>
+                <span className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white">{t("moveTo")}</span>
               </NotebookPicker>
             )}
           </div>

@@ -14,6 +14,8 @@ const config: Config = {
         subtle: token("subtle"),
         line: token("line"),
         accent: token("accent"),
+        // Logo red for filled buttons; white text on it passes contrast in both themes
+        brand: token("brand"),
       },
       fontFamily: {
         sans: [
