@@ -232,6 +232,9 @@ async function fromAudio(id: string, memberCookies: string | null, keepAs?: stri
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ytsum-"))
   try {
     const source = await downloadAudio(id, memberCookies, dir)
+    // Checked after the download and before the paid transcription
+    const seconds = await probeSeconds(source)
+    if (seconds > MAX_SECONDS + 60) throw new TooLongError(`${id} is ${Math.round(seconds)} s long`)
     return await splitAndTranscribe(list, source, dir, id, keepAs, hint)
   } finally {
     release()

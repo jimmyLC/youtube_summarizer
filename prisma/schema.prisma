@@ -18,6 +18,14 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  /// free | pro. The owner (UNLIMITED_EMAILS) is unlimited whatever this says. Pro is switched on by hand until payments exist.
+  plan          String   @default("free")
+  /// Videos converted successfully, ever. Deleting a video does not give the quota back.
+  conversions   Int      @default(0)
+  /// Audio seconds converted in `usageMonth` ("YYYY-MM", Taipei time); pro's monthly allowance is measured on this
+  usageMonth    String   @default("")
+  usageSeconds  Int      @default(0)
+
   sessions  Session[]
   accounts  Account[]
   videos    Video[]
@@ -103,6 +111,10 @@ model Video {
   transcript  String?
   /// captions | groq | openai
   source      String?
+  /// Length of the recording, set when it counted against the user's quota
+  seconds     Int?
+  /// True once this video has been counted against the quota (so retries and re-summaries do not count twice)
+  counted     Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

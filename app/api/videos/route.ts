@@ -5,6 +5,7 @@ import { extractVideoId, fetchVideoMeta } from "@/lib/youtube"
 import { recoverInterrupted, startJob } from "@/lib/jobs"
 import { listVideos } from "@/lib/videos"
 import { notebookForChannel } from "@/lib/notebooks"
+import { quotaError } from "@/lib/plans"
 
 const unauthorized = () => NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 })
 
@@ -32,6 +33,10 @@ export async function POST(req: Request) {
   if (existing) {
     // Converting again: move it to the top; re-run only if it failed
     const retry = existing.status === "error"
+    if (retry && !existing.counted) {
+      const blocked = await quotaError(userId)
+      if (blocked) return NextResponse.json({ error: blocked }, { status: 402 })
+    }
     await prisma.video.update({
       where: { id: existing.id },
       data: { createdAt: new Date(), ...(retry ? { status: "queued", error: null, lang } : {}) },
@@ -39,6 +44,9 @@ export async function POST(req: Request) {
     if (retry) startJob(existing.id)
     return NextResponse.json({ id: existing.id, existed: !retry })
   }
+
+  const blocked = await quotaError(userId)
+  if (blocked) return NextResponse.json({ error: blocked }, { status: 402 })
 
   const meta = await fetchVideoMeta(youtubeId)
   const video = await prisma.video.create({

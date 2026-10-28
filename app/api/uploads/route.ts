@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma"
 import { startJob } from "@/lib/jobs"
 import { MAX_AUDIO_BYTES, MAX_FILE_BYTES, fileBaseName } from "@/lib/upload-limits"
 import { cleanName, notebookByName } from "@/lib/notebooks"
+import { quotaError } from "@/lib/plans"
 import { audioPath, ensureUploadDir, removeAudio } from "@/lib/uploads"
 
 const unauthorized = () => NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 })
@@ -35,6 +36,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const userId = await currentUserId()
   if (!userId) return unauthorized()
+
+  // Before the body is read: a refused user should not have to finish a big upload first
+  const blocked = await quotaError(userId)
+  if (blocked) return NextResponse.json({ error: blocked }, { status: 402 })
 
   const params = new URL(req.url).searchParams
   const fileName = (params.get("fileName") ?? "").slice(0, 300)

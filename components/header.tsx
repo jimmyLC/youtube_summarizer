@@ -66,6 +66,9 @@ function UserMenu({ user }: { user: HeaderUser }) {
       {open && (
         <div className="absolute right-0 z-10 mt-2 w-56 rounded-xl border border-line bg-bg p-1 text-sm shadow-lg">
           <div className="truncate px-3 py-2 text-muted">{user.email}</div>
+          <Link href="/account" className="block rounded-lg px-3 py-2 hover:bg-subtle">
+            {t("account")}
+          </Link>
           {user.memberCookies && (
             <Link href="/settings" className="block rounded-lg px-3 py-2 hover:bg-subtle">
               {t("settings")}

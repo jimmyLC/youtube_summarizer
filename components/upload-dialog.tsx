@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
+import { exhausted, type Usage } from "@/lib/plan-types"
 import { cancelExtraction, ExtractError, extractAudio, probeDuration } from "@/lib/extract-audio"
 import {
   AUDIO_BYTES_PER_SECOND,
@@ -73,6 +74,15 @@ export function UploadDialog({ file, notebooks, onClose }: { file: File; noteboo
       lang,
     })
 
+    // Out of quota? Better to hear it before the file is converted and sent
+    try {
+      const res = await fetch("/api/account")
+      const blocked = res.ok ? exhausted((await res.json()) as Usage) : null
+      if (blocked) return fail(t(blocked === "QUOTA_MONTH" ? "quota.month" : "quota.free"))
+    } catch {
+      // the server checks again anyway
+    }
+
     // Same file as an earlier upload?
     try {
       const res = await fetch(`/api/uploads?${new URLSearchParams({ fileName: file.name, fileSize: String(file.size) })}`)
@@ -107,6 +117,8 @@ export function UploadDialog({ file, notebooks, onClose }: { file: File; noteboo
       router.refresh()
     } catch (e) {
       if (e instanceof ExtractError) return fail(t("upload.extractFail"))
+      const code = (e as Error).message
+      if (code === "QUOTA_FREE" || code === "QUOTA_MONTH") return fail(t(code === "QUOTA_MONTH" ? "quota.month" : "quota.free"))
       fail(t("upload.sendFail"))
     }
   }
@@ -120,8 +132,9 @@ export function UploadDialog({ file, notebooks, onClose }: { file: File; noteboo
       req.upload.onprogress = (e) => e.lengthComputable && setProgress(e.loaded / e.total)
       req.onload = () => {
         try {
-          const data = JSON.parse(req.responseText) as { id?: string }
-          if (req.status === 200 && data.id) resolve(data.id)
+          const data = JSON.parse(req.responseText) as { id?: string; error?: string }
+          if (req.status === 402) reject(new Error(String(data.error)))
+          else if (req.status === 200 && data.id) resolve(data.id)
           else reject(new Error(String(req.status)))
         } catch {
           reject(new Error("bad response"))

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { authClient } from "@/lib/auth-client"
+import { PRIVACY_URL, TERMS_URL } from "./account-view"
 import { Logo } from "./header"
 import { LangToggle, useI18n } from "./i18n"
 
@@ -23,6 +24,7 @@ export function Login({ error }: { error?: boolean }) {
         <Logo className="h-14 w-14" />
         <h1 className="mt-5 text-2xl font-semibold tracking-tight">{t("appName")}</h1>
         <p className="mt-2 text-muted">{t("tagline")}</p>
+        <p className="mt-1 text-sm font-medium">{t("login.free")}</p>
         <button
           onClick={signIn}
           disabled={busy}
@@ -32,6 +34,16 @@ export function Login({ error }: { error?: boolean }) {
           {t("signIn")}
         </button>
         {error && <p className="mt-4 text-sm text-accent">{t("signInError")}</p>}
+        <p className="mt-6 text-xs text-muted">
+          {t("login.agree")}{" "}
+          <a href={TERMS_URL} target="_blank" rel="noreferrer" className="underline">
+            {t("account.terms")}
+          </a>{" "}
+          {t("login.and")}{" "}
+          <a href={PRIVACY_URL} target="_blank" rel="noreferrer" className="underline">
+            {t("account.privacy")}
+          </a>
+        </p>
       </div>
     </main>
   )

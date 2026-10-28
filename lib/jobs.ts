@@ -3,6 +3,8 @@ import { CookiesExpiredError, getTranscript, getTranscriptFromFile, MembersOnlyE
 import { memberCookiesFor } from "./member-cookies"
 import { audioExists, audioPath, removeAudio } from "./uploads"
 import { polishTranscript } from "./polish"
+import { recordUsage } from "./plans"
+import { MAX_SECONDS } from "./upload-limits"
 import { summarize } from "./summarize"
 import type { Lang } from "./i18n"
 
@@ -46,6 +48,8 @@ async function runJob(id: string, summaryOnly: boolean) {
         ? await getTranscriptFromFile(audioPath(id), hint)
         : await getTranscript(video.youtubeId, { memberCookies: await memberCookiesFor(video.userId), keepAudioAs: audioPath(id), hint })
       lines = transcript.lines
+      // The audio route refuses long downloads; captions tell the length only now
+      if (!upload && (lines.at(-1)?.[0] ?? 0) > MAX_SECONDS + 60) throw new TooLongError(`${id} is longer than ${MAX_SECONDS} s`)
       // Fix same-sounding wrong characters (names, terms); Chinese only, and it never fails the job
       if (/^zh/i.test(transcript.lang)) lines = await polishTranscript(lines, { title: video.title, channel: video.channel })
       await prisma.video.update({
@@ -78,6 +82,7 @@ async function runJob(id: string, summaryOnly: boolean) {
       existingTags: existing.map((t) => t.name),
     })
     await audio // so the player is there when the page sees "done"
+    const seconds = (lines.at(-1)?.[0] ?? 0) + 10
     await prisma.video.update({
       where: { id },
       data: {
@@ -92,6 +97,7 @@ async function runJob(id: string, summaryOnly: boolean) {
     if (!summaryOnly && (await prisma.videoTag.count({ where: { videoId: id } })) === 0) {
       await setTags(video.userId, id, tags)
     }
+    await recordUsage(id, seconds).catch((e) => console.error(`[job ${id}] could not record usage:`, e))
   } catch (e) {
     return fail(id, "SUMMARY_FAILED", e)
   } finally {

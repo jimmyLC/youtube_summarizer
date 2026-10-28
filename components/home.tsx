@@ -1,8 +1,10 @@
 "use client"
 
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowRight, Loader2, Upload } from "lucide-react"
+import { PRO_MONTHLY_HOURS, type Usage } from "@/lib/plan-types"
 import { notebookRows, tagRows, type NotebookItem, type NotebookRow, type VideoItem } from "@/lib/video-types"
 import { extractVideoId } from "@/lib/youtube"
 import { Header, type HeaderUser } from "./header"
@@ -27,6 +29,8 @@ export function Home({ user, initial, initialNotebooks, shared, initialView }: {
   const [videos, setVideos] = useState(initial)
   const [url, setUrl] = useState("")
   const [error, setError] = useState("")
+  const [quotaHit, setQuotaHit] = useState(false)
+  const [usage, setUsage] = useState<Usage | null>(null)
   const [busy, setBusy] = useState(false)
   const [notebooks, setNotebooks] = useState(initialNotebooks)
   const [view, setViewState] = useState<View>(initialView)
@@ -45,9 +49,10 @@ export function Home({ user, initial, initialNotebooks, shared, initialView }: {
 
   // New YouTube videos create their notebook on the server; pick those up with the list
   const reload = async () => {
-    const [v, n] = await Promise.all([fetch("/api/videos"), fetch("/api/notebooks")])
+    const [v, n, u] = await Promise.all([fetch("/api/videos"), fetch("/api/notebooks"), fetch("/api/account")])
     if (v.ok) setVideos(await v.json())
     if (n.ok) setNotebooks(await n.json())
+    if (u.ok) setUsage(await u.json())
   }
 
   const json = (method: string, body: unknown) => ({
@@ -87,6 +92,13 @@ export function Home({ user, initial, initialNotebooks, shared, initialView }: {
     await reload()
   }
 
+  useEffect(() => {
+    fetch("/api/account")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((u) => u && setUsage(u))
+      .catch(() => {})
+  }, [])
+
   // Refresh while something is still being converted
   const pending = videos.some((v) => isPending(v.status))
   useEffect(() => {
@@ -105,6 +117,7 @@ export function Home({ user, initial, initialNotebooks, shared, initialView }: {
     }
     setBusy(true)
     setError("")
+    setQuotaHit(false)
     try {
       const res = await fetch("/api/videos", {
         method: "POST",
@@ -115,7 +128,13 @@ export function Home({ user, initial, initialNotebooks, shared, initialView }: {
       if (!res.ok) throw new Error(data.error)
       router.push(`/v/${data.id}`)
     } catch (e) {
-      setError((e as Error).message === "INVALID_URL" ? t("invalidUrl") : t("networkError"))
+      const code = (e as Error).message
+      if (code === "QUOTA_FREE" || code === "QUOTA_MONTH") {
+        setQuotaHit(true)
+        setError(t(code === "QUOTA_MONTH" ? "quota.month" : "quota.free"))
+      } else {
+        setError(code === "INVALID_URL" ? t("invalidUrl") : t("networkError"))
+      }
       setBusy(false)
     }
   }
@@ -217,7 +236,30 @@ export function Home({ user, initial, initialNotebooks, shared, initialView }: {
           <span className="hidden sm:inline">{t("convert")}</span>
         </button>
       </form>
-      {error && <p className="mt-2 px-1 text-sm text-accent">{error}</p>}
+      {error && (
+        <p className="mt-2 px-1 text-sm text-accent">
+          {error}
+          {quotaHit && (
+            <>
+              {" "}
+              <Link href="/account" className="underline">
+                {t("quota.link")}
+              </Link>
+            </>
+          )}
+        </p>
+      )}
+      {usage && usage.plan !== "unlimited" && !error && (
+        <p className="mt-2 px-1 text-xs text-muted">
+          <Link href="/account" className="hover:text-fg">
+            {usage.plan === "free"
+              ? t("usage.free").replace("{used}", String(usage.videosUsed)).replace("{limit}", String(usage.videosLimit))
+              : t("usage.pro")
+                  .replace("{used}", (usage.secondsUsed / 3600).toFixed(1))
+                  .replace("{limit}", String(PRO_MONTHLY_HOURS))}
+          </Link>
+        </p>
+      )}
 
       <div className="mt-8 flex gap-6 border-b border-line">
         <ViewTab active={view === "all"} onClick={() => setView("all")}>
