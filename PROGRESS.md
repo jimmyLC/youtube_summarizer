@@ -92,3 +92,7 @@ API 成本（Groq 轉錄每小時 0.04 美元；DeepSeek flash 尖峰價輸入 0
 - [ ] Jimmy 用手機登入驗證 Google 登入（Google 設定可能要幾分鐘才生效）。
 - [ ] 手機實測 PWA（加到主畫面、Google 登入、分享）。
 - [x] 舊版 v1 已全部清除（2026-10-21）：Mac mini 上的舊服務、`~/youtube_summarizer`（含舊資料庫）、舊 Tunnel 的憑證與設定、舊日誌，以及 Cloudflare 後台舊的 Tunnel `yt-summarizer` 都已刪除；舊分支也已刪除，只剩 `main`。Mac mini 現在只負責 YouTube 中繼 `com.jimmy.yt-relay`（`~/.cloudflared/cert.pem` 是帳號登入憑證，留著未刪）。
+
+## 2026-10-29
+- 影片頁新增「下載 .md」（`lib/export-md.ts`，瀏覽器端產生）：標題、來源、標籤、總結、重點、逐字稿；YouTube 時間點為可點連結。已合併並部署。
+- 還沒做：複製 Markdown、直接寫入 Notion（OAuth）、AI 問答、翻譯。
