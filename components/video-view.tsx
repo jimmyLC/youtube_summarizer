@@ -3,8 +3,9 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { ArrowLeft, BookOpen, Check, ChevronDown, Copy, ExternalLink, FileAudio, Pencil, Play, Plus, X } from "lucide-react"
+import { ArrowLeft, BookOpen, Check, ChevronDown, Copy, Download, ExternalLink, FileAudio, Pencil, Play, Plus, X } from "lucide-react"
 import type { NotebookItem, VideoDetail } from "@/lib/video-types"
+import { markdownFileName, toParagraphs, videoMarkdown } from "@/lib/export-md"
 import { formatTime, watchUrl } from "@/lib/youtube"
 import { AudioPlayer, type PlayerHandle } from "./audio-player"
 import { Header, type HeaderUser } from "./header"
@@ -177,6 +178,23 @@ export function VideoView({ user, initial, allTags, notebooks: initialNotebooks 
     setTimeout(() => setCopied(false), 1500)
   }
 
+  const download = () => {
+    const text = videoMarkdown(video, {
+      keyPoints: t("keyPoints"),
+      transcript: t("transcript"),
+      source: t("md.source"),
+      tags: t("md.tags"),
+    })
+    const url = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }))
+    const a = document.createElement("a")
+    a.href = url
+    a.download = markdownFileName(video.title)
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
   return (
     <main className={`mx-auto max-w-2xl px-4 pt-[env(safe-area-inset-top)] ${hasAudio ? "pb-32" : "pb-20"}`}>
       <Header user={user} />
@@ -272,6 +290,12 @@ export function VideoView({ user, initial, allTags, notebooks: initialNotebooks 
                     {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                     {copied ? t("copied") : t("copy")}
                   </button>
+                  {!pending && (
+                    <button onClick={download} className="flex items-center gap-1 text-muted hover:text-fg">
+                      <Download className="h-4 w-4" />
+                      {t("md.download")}
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -569,18 +593,4 @@ function AutoTextarea({ value, onChange }: { value: string; onChange: (text: str
       className="min-w-0 flex-1 resize-none rounded-lg border border-line bg-transparent px-2 py-1 leading-relaxed text-fg/85 outline-none focus:border-fg/40"
     />
   )
-}
-
-/** Merges transcript lines into ~45 s paragraphs; CJK text is joined without spaces. */
-function toParagraphs(lines: [number, string][]): { time: number; text: string }[] {
-  const out: { time: number; text: string; parts: string[] }[] = []
-  for (const [time, text] of lines) {
-    const last = out[out.length - 1]
-    if (!last || time - last.time >= 45) out.push({ time, text: "", parts: [text] })
-    else last.parts.push(text)
-  }
-  return out.map(({ time, parts }) => {
-    const cjk = /[㐀-鿿]/.test(parts.join(""))
-    return { time, text: parts.join(cjk ? "，" : " ").replace(/([。！？，、])，/g, "$1") }
-  })
 }
