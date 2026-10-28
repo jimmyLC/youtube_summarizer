@@ -1,4 +1,4 @@
-# YT 摘要（v2）
+# YT摘要筆記（v2，原名 YT 摘要）
 
 `jimmyLC/youtube_summarizer`。原本 fork 自 `DevRico003/youtube_summarizer`（remote `upstream`），v2 已整個重寫，不再跟原作者同步。貼 YouTube 連結，產出重點摘要與逐字稿，有歷史紀錄與標籤。目前進度見 [PROGRESS.md](PROGRESS.md)。
 

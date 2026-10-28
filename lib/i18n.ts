@@ -5,7 +5,7 @@ export const LANG_COOKIE = "lang"
 export const parseLang = (value: string | undefined): Lang => (value === "en" ? "en" : "zh-TW")
 
 const zh = {
-  appName: "YT 摘要",
+  appName: "YT摘要筆記",
   tagline: "貼上 YouTube 連結，立刻得到重點摘要與逐字稿。",
   signIn: "使用 Google 登入",
   signInError: "登入失敗，請再試一次。",
@@ -152,7 +152,7 @@ const zh = {
 type Key = keyof typeof zh
 
 const en: Record<Key, string> = {
-  appName: "YT Summary",
+  appName: "YT Summary Notes",
   tagline: "Paste a YouTube link, get the key points and the transcript.",
   signIn: "Sign in with Google",
   signInError: "Sign-in failed, please try again.",

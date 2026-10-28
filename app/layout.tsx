@@ -6,9 +6,9 @@ import { LANG_COOKIE, parseLang } from "@/lib/i18n"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "YT 摘要",
-  description: "YouTube 重點摘要與逐字稿",
-  appleWebApp: { capable: true, title: "YT 摘要", statusBarStyle: "default" },
+  title: "YT摘要筆記",
+  description: "YouTube 影片轉 AI 摘要與逐字稿",
+  appleWebApp: { capable: true, title: "YT摘要筆記", statusBarStyle: "default" },
 }
 
 export const viewport: Viewport = {

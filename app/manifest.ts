@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next"
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "YT 摘要",
-    short_name: "YT 摘要",
-    description: "YouTube 重點摘要與逐字稿",
+    name: "YT摘要筆記",
+    short_name: "YT摘要筆記",
+    description: "YouTube 影片轉 AI 摘要與逐字稿",
     start_url: "/",
     display: "standalone",
     background_color: "#ffffff",
